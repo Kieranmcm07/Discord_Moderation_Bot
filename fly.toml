@@ -1,0 +1,7 @@
+app = 'discord-moderation-bot-kwrnvg'
+primary_region = 'lhr'
+
+[build]
+
+[processes]
+  app = "python main.py"
