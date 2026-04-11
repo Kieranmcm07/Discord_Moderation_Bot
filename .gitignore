@@ -1,0 +1,26 @@
+# .gitignore — things that should NEVER go to GitHub
+
+# secret config — your token lives here, keep it private
+.env
+
+# database — this is local data, no need to commit it
+data/
+*.db
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# virtual environment
+venv/
+env/
+.venv/
+
+# logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
