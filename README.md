@@ -37,6 +37,33 @@ Then open `.env` and paste in your bot token and config.
 python main.py
 ```
 
+### Windows local startup
+If you want the bot to boot with Windows using a visible command prompt splash screen and then continue hidden in the background:
+
+```bat
+start_bot.bat
+```
+
+To add it to Windows startup automatically:
+
+```bat
+install_startup.bat
+```
+
+To remove it from startup later:
+
+```bat
+remove_startup.bat
+```
+
+What happens on startup:
+- a command prompt window opens
+- a large ASCII startup banner is shown
+- the bot launches in the background
+- a green `BOT ONLINE` success banner is shown if startup succeeds
+- the command prompt closes after success
+- if startup fails, a red failure banner stays open so you can read the error
+
 ---
 
 ## Config
