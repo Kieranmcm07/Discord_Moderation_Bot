@@ -91,6 +91,49 @@ async def init_db():
             )
         """)
 
+        # --- ticket system settings ---
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS ticket_settings (
+                guild_id         INTEGER PRIMARY KEY,
+                category_id      INTEGER,
+                log_channel_id   INTEGER,
+                panel_channel_id INTEGER
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS ticket_roles (
+                guild_id INTEGER NOT NULL,
+                role_id  INTEGER NOT NULL,
+                PRIMARY KEY (guild_id, role_id)
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS ticket_categories (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id    INTEGER NOT NULL,
+                name        TEXT NOT NULL,
+                emoji       TEXT,
+                description TEXT,
+                UNIQUE(guild_id, name)
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS tickets (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id        INTEGER NOT NULL,
+                channel_id      INTEGER NOT NULL UNIQUE,
+                user_id         INTEGER NOT NULL,
+                category_name   TEXT NOT NULL,
+                status          TEXT NOT NULL DEFAULT 'open',
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                closed_at       TIMESTAMP,
+                closed_by_id    INTEGER
+            )
+        """)
+
         await db.commit()
 
 
@@ -219,3 +262,161 @@ async def log_member_event(guild_id, user_id, event: str):
             (guild_id, user_id, event)
         )
         await db.commit()
+
+
+# Ticket helpers
+
+async def get_ticket_settings(guild_id) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM ticket_settings WHERE guild_id=?",
+            (guild_id,),
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def upsert_ticket_settings(
+    guild_id,
+    category_id=None,
+    log_channel_id=None,
+    panel_channel_id=None,
+):
+    current = await get_ticket_settings(guild_id) or {}
+    values = {
+        "category_id": category_id if category_id is not None else current.get("category_id"),
+        "log_channel_id": log_channel_id if log_channel_id is not None else current.get("log_channel_id"),
+        "panel_channel_id": panel_channel_id if panel_channel_id is not None else current.get("panel_channel_id"),
+    }
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO ticket_settings (guild_id, category_id, log_channel_id, panel_channel_id)
+               VALUES (?,?,?,?)
+               ON CONFLICT(guild_id) DO UPDATE SET
+               category_id=excluded.category_id,
+               log_channel_id=excluded.log_channel_id,
+               panel_channel_id=excluded.panel_channel_id""",
+            (
+                guild_id,
+                values["category_id"],
+                values["log_channel_id"],
+                values["panel_channel_id"],
+            ),
+        )
+        await db.commit()
+
+
+async def add_ticket_role(guild_id, role_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO ticket_roles (guild_id, role_id) VALUES (?,?)",
+            (guild_id, role_id),
+        )
+        await db.commit()
+
+
+async def remove_ticket_role(guild_id, role_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM ticket_roles WHERE guild_id=? AND role_id=?",
+            (guild_id, role_id),
+        )
+        await db.commit()
+
+
+async def get_ticket_roles(guild_id) -> list[int]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT role_id FROM ticket_roles WHERE guild_id=? ORDER BY role_id",
+            (guild_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [row[0] for row in rows]
+
+
+async def add_ticket_category(guild_id, name: str, emoji: str | None = None, description: str | None = None):
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """INSERT INTO ticket_categories (guild_id, name, emoji, description)
+               VALUES (?,?,?,?)""",
+            (guild_id, name, emoji, description),
+        )
+        await db.commit()
+        return cur.lastrowid
+
+
+async def remove_ticket_category(guild_id, category_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM ticket_categories WHERE guild_id=? AND id=?",
+            (guild_id, category_id),
+        )
+        await db.commit()
+
+
+async def get_ticket_categories(guild_id) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM ticket_categories WHERE guild_id=? ORDER BY id ASC",
+            (guild_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def create_ticket(guild_id, channel_id, user_id, category_name: str) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """INSERT INTO tickets (guild_id, channel_id, user_id, category_name)
+               VALUES (?,?,?,?)""",
+            (guild_id, channel_id, user_id, category_name),
+        )
+        await db.commit()
+        return cur.lastrowid
+
+
+async def get_ticket_by_channel(channel_id) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM tickets WHERE channel_id=?",
+            (channel_id,),
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def get_open_ticket_for_user(guild_id, user_id) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM tickets WHERE guild_id=? AND user_id=? AND status='open' ORDER BY id DESC LIMIT 1",
+            (guild_id, user_id),
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def close_ticket(channel_id, closed_by_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """UPDATE tickets
+               SET status='closed', closed_at=CURRENT_TIMESTAMP, closed_by_id=?
+               WHERE channel_id=? AND status='open'""",
+            (closed_by_id, channel_id),
+        )
+        await db.commit()
+
+
+async def get_open_tickets(guild_id) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM tickets WHERE guild_id=? AND status='open' ORDER BY id ASC",
+            (guild_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(row) for row in rows]

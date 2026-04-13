@@ -10,6 +10,7 @@ Built with [discord.py](https://discordpy.readthedocs.io/) and SQLite.
 - **Invite Logging** — tracks which invite each new member used to join
 - **Activity Stats** — message leaderboards, voice time tracking, per-user stats
 - **Server Management** — server info, user info, role info, channel lock/unlock, announcements
+- **Tickets** — button-based private support tickets with staff roles, close controls, and transcripts
 
 ---
 
@@ -121,6 +122,23 @@ All settings live in `.env`:
 | `,unlock [#channel]` | Unlock a channel |
 | `,announce #channel <msg>` | Post an announcement |
 | `,botinfo` | Bot stats |
+
+### Tickets
+| Command | Description |
+|---|---|
+| `,setticketcategory <category>` | Set the category for created ticket channels |
+| `,setticketlog <#channel>` | Set the log channel for ticket events and transcripts |
+| `,ticketroleadd <role>` | Allow a role to see and manage tickets |
+| `,ticketroleremove <role>` | Remove a role from ticket access |
+| `,ticketroles` | Show current ticket staff roles |
+| `,ticketcategoryadd Name \| Emoji \| Description` | Add a ticket category button |
+| `,ticketcategoryremove <id>` | Remove a ticket category button |
+| `,ticketcategories` | List configured ticket categories |
+| `,ticketpanel [#channel]` | Post the create-ticket panel |
+| `,ticketsettings` | Show the current ticket setup |
+| `,ticketadd @user` | Add a user to the current ticket |
+| `,ticketremove @user` | Remove a user from the current ticket |
+| `,closeticket` | Close the current ticket |
 
 ---
 
