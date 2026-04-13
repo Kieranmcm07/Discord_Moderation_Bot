@@ -218,7 +218,7 @@ class ServerManagement(commands.Cog, name="Server Management"):
     # ,botinfo
     # ─────────────────────────────────────────────
     @commands.command(name="botinfo", help="Shows info about the bot itself.")
-    async def bot_info(self, ctx):
+    async def show_bot_info(self, ctx):
         """Usage: ,botinfo"""
         bot = self.bot
         e = discord.Embed(title=f"ℹ️ {bot.user.name}", color=COLOR_INFO)

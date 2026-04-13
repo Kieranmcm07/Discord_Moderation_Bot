@@ -110,7 +110,6 @@ All settings live in `.env`:
 | `,stats [@user]` | Stats for a user |
 
 ### Server
-(Coming Soon)
 
 | Command | Description |
 |---|---|
