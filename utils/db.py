@@ -134,6 +134,16 @@ async def init_db():
             )
         """)
 
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS escalation_rules (
+                guild_id    INTEGER NOT NULL,
+                warn_count  INTEGER NOT NULL,
+                action      TEXT NOT NULL,
+                duration    TEXT,
+                PRIMARY KEY (guild_id, warn_count)
+            )
+        """)
+
         await db.commit()
 
 
@@ -185,6 +195,60 @@ async def get_recent_cases(guild_id, limit=10) -> list[dict]:
         ) as cur:
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
+
+
+async def get_warn_count(guild_id, user_id) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM cases WHERE guild_id=? AND user_id=? AND action='warn'",
+            (guild_id, user_id),
+        ) as cur:
+            row = await cur.fetchone()
+            return int(row[0]) if row else 0
+
+
+async def upsert_escalation_rule(guild_id, warn_count: int, action: str, duration: str | None = None):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO escalation_rules (guild_id, warn_count, action, duration)
+               VALUES (?,?,?,?)
+               ON CONFLICT(guild_id, warn_count) DO UPDATE SET
+               action=excluded.action,
+               duration=excluded.duration""",
+            (guild_id, warn_count, action, duration),
+        )
+        await db.commit()
+
+
+async def remove_escalation_rule(guild_id, warn_count: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM escalation_rules WHERE guild_id=? AND warn_count=?",
+            (guild_id, warn_count),
+        )
+        await db.commit()
+
+
+async def get_escalation_rules(guild_id) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM escalation_rules WHERE guild_id=? ORDER BY warn_count ASC",
+            (guild_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def get_matching_escalation_rule(guild_id, warn_count: int) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM escalation_rules WHERE guild_id=? AND warn_count=?",
+            (guild_id, warn_count),
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
 
 
 # ─────────────────────────────────────────────

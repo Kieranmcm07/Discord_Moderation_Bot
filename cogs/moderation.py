@@ -9,7 +9,15 @@ import discord
 from discord.ext import commands
 import asyncio
 from datetime import datetime, timedelta
-from utils.db import add_case, init_db
+from utils.db import (
+    add_case,
+    get_escalation_rules,
+    get_matching_escalation_rule,
+    get_warn_count,
+    init_db,
+    remove_escalation_rule,
+    upsert_escalation_rule,
+)
 from config import MOD_LOG_CHANNEL_ID, COLOR_MOD, COLOR_ERROR, COLOR_SUCCESS
 
 
@@ -35,6 +43,82 @@ class Moderation(commands.Cog, name="Moderation"):
 
     def __init__(self, bot):
         self.bot = bot
+
+    async def apply_escalation(self, ctx, target: discord.Member, warn_count: int):
+        rule = await get_matching_escalation_rule(ctx.guild.id, warn_count)
+        if not rule:
+            return None
+
+        if target == ctx.author:
+            return None
+
+        if target.top_role >= ctx.author.top_role:
+            return discord.Embed(
+                description=(
+                    f"⚠️ Escalation matched at **{warn_count}** warns, but the target has an equal or higher role than the moderator."
+                ),
+                color=COLOR_ERROR,
+            )
+
+        if target.top_role >= ctx.guild.me.top_role:
+            return discord.Embed(
+                description=(
+                    f"⚠️ Escalation matched at **{warn_count}** warns, but I can't moderate that user because their role is above mine."
+                ),
+                color=COLOR_ERROR,
+            )
+
+        action = rule["action"]
+        duration = rule.get("duration")
+        reason = f"Automatic escalation after {warn_count} warnings."
+
+        if action == "timeout":
+            seconds = parse_duration(duration or "")
+            if seconds is None or seconds > 2419200:
+                return discord.Embed(
+                    description=f"⚠️ Escalation matched at **{warn_count}** warns, but the timeout duration is invalid.",
+                    color=COLOR_ERROR,
+                )
+
+            until = discord.utils.utcnow() + timedelta(seconds=seconds)
+            await target.timeout(until, reason=reason)
+            case_id = await add_case(ctx.guild.id, target.id, ctx.author.id, "timeout", reason, duration)
+            await self.try_dm(
+                target,
+                discord.Embed(
+                    description=(
+                        f"You were automatically **timed out** in **{ctx.guild.name}** for `{duration}`.\n**Reason:** {reason}"
+                    ),
+                    color=COLOR_MOD,
+                ),
+            )
+            return self.mod_embed("Auto Timeout", target, ctx.author, reason, case_id, duration)
+
+        if action == "kick":
+            await self.try_dm(
+                target,
+                discord.Embed(
+                    description=f"You were automatically **kicked** from **{ctx.guild.name}**.\n**Reason:** {reason}",
+                    color=COLOR_MOD,
+                ),
+            )
+            case_id = await add_case(ctx.guild.id, target.id, ctx.author.id, "kick", reason)
+            await target.kick(reason=f"[Case #{case_id}] {reason} | Mod: {ctx.author}")
+            return self.mod_embed("Auto Kick", target, ctx.author, reason, case_id)
+
+        if action == "ban":
+            await self.try_dm(
+                target,
+                discord.Embed(
+                    description=f"You were automatically **banned** from **{ctx.guild.name}**.\n**Reason:** {reason}",
+                    color=COLOR_MOD,
+                ),
+            )
+            case_id = await add_case(ctx.guild.id, target.id, ctx.author.id, "ban", reason)
+            await target.ban(reason=f"[Case #{case_id}] {reason} | Mod: {ctx.author}")
+            return self.mod_embed("Auto Ban", target, ctx.author, reason, case_id)
+
+        return None
 
     # ── helper to send a message to the mod-log channel ──
     async def send_mod_log(self, guild: discord.Guild, embed: discord.Embed):
@@ -169,6 +253,12 @@ class Moderation(commands.Cog, name="Moderation"):
         await ctx.send(embed=embed)
         await self.send_mod_log(ctx.guild, embed)
 
+        warn_count = await get_warn_count(ctx.guild.id, target.id)
+        escalation_embed = await self.apply_escalation(ctx, target, warn_count)
+        if escalation_embed:
+            await ctx.send(embed=escalation_embed)
+            await self.send_mod_log(ctx.guild, escalation_embed)
+
     # ─────────────────────────────────────────────
     # ,timeout (uses Discord's built-in timeout feature)
     # ─────────────────────────────────────────────
@@ -265,6 +355,53 @@ class Moderation(commands.Cog, name="Moderation"):
         else:
             desc = f"✅ Slowmode set to **{seconds}s** in {ctx.channel.mention}."
         await ctx.send(embed=discord.Embed(description=desc, color=COLOR_SUCCESS))
+
+
+    @commands.command(name="setescalation", help="Set an automatic punishment for a warn threshold.")
+    @commands.has_permissions(manage_guild=True)
+    async def set_escalation(self, ctx, warn_count: int, action: str, duration: str = None):
+        """
+        Usage: ,setescalation <warn_count> <timeout|kick|ban> [duration]
+        Example: ,setescalation 3 timeout 30m
+        """
+        action = action.lower()
+        if warn_count < 1:
+            return await ctx.send(embed=discord.Embed(description="âŒ Warn count must be at least 1.", color=COLOR_ERROR))
+
+        if action not in {"timeout", "kick", "ban"}:
+            return await ctx.send(embed=discord.Embed(description="âŒ Action must be `timeout`, `kick`, or `ban`.", color=COLOR_ERROR))
+
+        if action == "timeout":
+            seconds = parse_duration(duration or "")
+            if seconds is None or seconds > 2419200:
+                return await ctx.send(embed=discord.Embed(description="âŒ Timeout rules need a valid duration like `30m`, `2h`, `1d`.", color=COLOR_ERROR))
+        else:
+            duration = None
+
+        await upsert_escalation_rule(ctx.guild.id, warn_count, action, duration)
+        action_text = f"{action} (`{duration}`)" if duration else action
+        await ctx.send(embed=discord.Embed(description=f"âœ… Escalation set: **{warn_count}** warns -> **{action_text}**", color=COLOR_SUCCESS))
+
+    @commands.command(name="removeescalation", help="Remove an automatic punishment for a warn threshold.")
+    @commands.has_permissions(manage_guild=True)
+    async def remove_escalation(self, ctx, warn_count: int):
+        await remove_escalation_rule(ctx.guild.id, warn_count)
+        await ctx.send(embed=discord.Embed(description=f"âœ… Removed the escalation rule for **{warn_count}** warns.", color=COLOR_SUCCESS))
+
+    @commands.command(name="escalations", aliases=["listescalations"], help="Show all configured warn escalation rules.")
+    @commands.has_permissions(manage_guild=True)
+    async def list_escalations(self, ctx):
+        rules = await get_escalation_rules(ctx.guild.id)
+        if not rules:
+            return await ctx.send(embed=discord.Embed(description="No punishment escalation rules are configured yet.", color=COLOR_SUCCESS))
+
+        embed = discord.Embed(title="Punishment Escalation Rules", color=COLOR_MOD)
+        for rule in rules:
+            action_text = rule["action"].title()
+            if rule.get("duration"):
+                action_text += f" ({rule['duration']})"
+            embed.add_field(name=f"{rule['warn_count']} Warns", value=action_text, inline=True)
+        await ctx.send(embed=embed)
 
 
 async def setup(bot):

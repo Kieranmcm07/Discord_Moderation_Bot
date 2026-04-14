@@ -6,6 +6,7 @@ Built with [discord.py](https://discordpy.readthedocs.io/) and SQLite.
 ## Features
 
 - **Moderation** — ban, kick, timeout, warn, unban, purge, slowmode
+- **Punishment Escalation** — automatically timeout, kick, or ban after warning thresholds
 - **Case Tracking** — every mod action gets a case number, lookup by user or case ID
 - **Invite Logging** — tracks which invite each new member used to join
 - **Activity Stats** — message leaderboards, voice time tracking, per-user stats
@@ -95,6 +96,9 @@ All settings live in `.env`:
 | `,untimeout @user` | Remove a timeout |
 | `,purge <amount>` | Bulk delete messages |
 | `,slowmode [seconds]` | Set channel slowmode |
+| `,setescalation <warns> <action> [duration]` | Set an automatic punishment rule |
+| `,removeescalation <warns>` | Remove an escalation rule |
+| `,escalations` | View configured escalation rules |
 
 ### Cases
 | Command | Description |
