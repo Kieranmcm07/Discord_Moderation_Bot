@@ -11,8 +11,10 @@ import asyncio
 from datetime import datetime, timedelta
 from utils.db import (
     add_case,
+    clear_recent_warns,
     get_escalation_rules,
     get_matching_escalation_rule,
+    get_recent_warns,
     get_warn_count,
     init_db,
     remove_escalation_rule,
@@ -258,6 +260,103 @@ class Moderation(commands.Cog, name="Moderation"):
         if escalation_embed:
             await ctx.send(embed=escalation_embed)
             await self.send_mod_log(ctx.guild, escalation_embed)
+
+    @commands.command(name="warnings", aliases=["warns"], help="Show a user's current warning count.")
+    @commands.has_permissions(kick_members=True)
+    async def warnings(self, ctx, target: discord.Member | discord.User):
+        """
+        Usage: ,warnings @user
+        Shows the active warning count and the most recent warning reasons.
+        """
+        warn_count = await get_warn_count(ctx.guild.id, target.id)
+        recent_warns = await get_recent_warns(ctx.guild.id, target.id, limit=5)
+
+        embed = discord.Embed(
+            title=f"Warnings - {target}",
+            description=f"Current warnings: **{warn_count}**",
+            color=COLOR_MOD,
+        )
+        embed.set_thumbnail(url=target.display_avatar.url)
+
+        if recent_warns:
+            lines = []
+            for warn in recent_warns:
+                timestamp = int(datetime.fromisoformat(warn["created_at"]).timestamp())
+                reason = warn["reason"] or "No reason given"
+                if len(reason) > 90:
+                    reason = f"{reason[:87]}..."
+                lines.append(f"`#{warn['id']}` <t:{timestamp}:d> - {reason}")
+            embed.add_field(name="Recent warnings", value="\n".join(lines), inline=False)
+        else:
+            embed.add_field(name="Recent warnings", value="No active warnings on record.", inline=False)
+
+        await ctx.send(embed=embed)
+
+    @commands.command(
+        name="clearwarns",
+        aliases=["unwarn", "removewarns"],
+        help="Remove one or more recent warnings from a user.",
+    )
+    @commands.has_permissions(kick_members=True)
+    async def clearwarns(self, ctx, target: discord.Member | discord.User, *, details: str = None):
+        """
+        Usage: ,clearwarns @user [amount] [reason]
+        Removes the user's most recent warning cases.
+        """
+        amount = 1
+        reason = None
+        if details:
+            first_word, _, remainder = details.partition(" ")
+            if first_word.isdigit():
+                amount = int(first_word)
+                reason = remainder.strip() or None
+            else:
+                reason = details
+
+        if amount < 1:
+            return await ctx.send(embed=discord.Embed(
+                description="❌ Amount must be at least 1.",
+                color=COLOR_ERROR,
+            ))
+
+        removed_case_ids = await clear_recent_warns(ctx.guild.id, target.id, amount)
+        if not removed_case_ids:
+            return await ctx.send(embed=discord.Embed(
+                description=f"❌ {target} has no warnings to remove.",
+                color=COLOR_ERROR,
+            ))
+
+        log_reason = reason or f"Removed {len(removed_case_ids)} warning(s)."
+        case_id = await add_case(
+            ctx.guild.id,
+            target.id,
+            ctx.author.id,
+            "clearwarns",
+            log_reason,
+            str(len(removed_case_ids)),
+        )
+        remaining_warns = await get_warn_count(ctx.guild.id, target.id)
+
+        embed = discord.Embed(
+            title="Warnings Cleared",
+            description=(
+                f"Removed **{len(removed_case_ids)}** warning(s) from {target}.\n"
+                f"Remaining warnings: **{remaining_warns}**"
+            ),
+            color=COLOR_SUCCESS,
+            timestamp=datetime.utcnow(),
+        )
+        embed.add_field(name="Moderator", value=f"{ctx.author} (`{ctx.author.id}`)", inline=True)
+        embed.add_field(
+            name="Removed cases",
+            value=", ".join(f"`#{warn_id}`" for warn_id in removed_case_ids),
+            inline=True,
+        )
+        embed.add_field(name="Reason", value=log_reason, inline=False)
+        embed.set_footer(text=f"Case #{case_id}")
+
+        await ctx.send(embed=embed)
+        await self.send_mod_log(ctx.guild, embed)
 
     # ─────────────────────────────────────────────
     # ,timeout (uses Discord's built-in timeout feature)

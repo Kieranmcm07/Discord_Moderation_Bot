@@ -9,45 +9,30 @@ from pathlib import Path
 
 
 BOOT_BANNER = r"""
-                                                                                                                                 
-88888888ba                           88888888ba                                     88                                           
-88      "8b                ,d        88      "8b                             ,d     ""                                           
-88      ,8P                88        88      ,8P                             88                                                  
-88aaaaaa8P'   ,adPPYba,  MM88MMM     88aaaaaa8P'   ,adPPYba,    ,adPPYba,  MM88MMM  88  8b,dPPYba,    ,adPPYb,d8                 
-88""""""8b,  a8"     "8a   88        88""""""8b,  a8"     "8a  a8"     "8a   88     88  88P'   `"8a  a8"    `Y88                 
-88      `8b  8b       d8   88        88      `8b  8b       d8  8b       d8   88     88  88       88  8b       88                 
-88      a8P  "8a,   ,a8"   88,       88      a8P  "8a,   ,a8"  "8a,   ,a8"   88,    88  88       88  "8a,   ,d88  888  888  888  
-88888888P"    `"YbbdP"'    "Y888     88888888P"    `"YbbdP"'    `"YbbdP"'    "Y888  88  88       88   `"YbbdP"Y8  888  888  888  
-                                                                                                      aa,    ,88                 
-                                                                                                       "Y8bbdP"                  
+██████╗  ██████╗ ████████╗    ██████╗  ██████╗  ██████╗ ████████╗██╗███╗   ██╗ ██████╗          
+██╔══██╗██╔═══██╗╚══██╔══╝    ██╔══██╗██╔═══██╗██╔═══██╗╚══██╔══╝██║████╗  ██║██╔════╝          
+██████╔╝██║   ██║   ██║       ██████╔╝██║   ██║██║   ██║   ██║   ██║██╔██╗ ██║██║  ███╗         
+██╔══██╗██║   ██║   ██║       ██╔══██╗██║   ██║██║   ██║   ██║   ██║██║╚██╗██║██║   ██║         
+██████╔╝╚██████╔╝   ██║       ██████╔╝╚██████╔╝╚██████╔╝   ██║   ██║██║ ╚████║╚██████╔╝██╗██╗██╗
+╚═════╝  ╚═════╝    ╚═╝       ╚═════╝  ╚═════╝  ╚═════╝    ╚═╝   ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝╚═╝╚═╝   
 """
 
 SUCCESS_BANNER = r"""
-                                                                                                   
-88888888ba                             ,ad8888ba,                 88  88                           
-88      "8b                ,d         d8"'    `"8b                88  ""                           
-88      ,8P                88        d8'        `8b               88                               
-88aaaaaa8P'   ,adPPYba,  MM88MMM     88          88  8b,dPPYba,   88  88  8b,dPPYba,    ,adPPYba,  
-88""""""8b,  a8"     "8a   88        88          88  88P'   `"8a  88  88  88P'   `"8a  a8P_____88  
-88      `8b  8b       d8   88        Y8,        ,8P  88       88  88  88  88       88  8PP"""""""  
-88      a8P  "8a,   ,a8"   88,        Y8a.    .a8P   88       88  88  88  88       88  "8b,   ,aa  
-88888888P"    `"YbbdP"'    "Y888       `"Y8888Y"'    88       88  88  88  88       88   `"Ybbd8"'  
-                                                                                                   
-                                                                                                   
+██████╗  ██████╗ ████████╗     ██████╗ ███╗   ██╗██╗     ██╗███╗   ██╗███████╗
+██╔══██╗██╔═══██╗╚══██╔══╝    ██╔═══██╗████╗  ██║██║     ██║████╗  ██║██╔════╝
+██████╔╝██║   ██║   ██║       ██║   ██║██╔██╗ ██║██║     ██║██╔██╗ ██║█████╗  
+██╔══██╗██║   ██║   ██║       ██║   ██║██║╚██╗██║██║     ██║██║╚██╗██║██╔══╝  
+██████╔╝╚██████╔╝   ██║       ╚██████╔╝██║ ╚████║███████╗██║██║ ╚████║███████╗
+╚═════╝  ╚═════╝    ╚═╝        ╚═════╝ ╚═╝  ╚═══╝╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝
 """
 
 FAIL_BANNER = r'''
-                                                                                           
-88888888ba                           88888888888          88  88                       88  
-88      "8b                ,d        88                   ""  88                       88  
-88      ,8P                88        88                       88                       88  
-88aaaaaa8P'   ,adPPYba,  MM88MMM     88aaaaa  ,adPPYYba,  88  88   ,adPPYba,   ,adPPYb,88  
-88""""""8b,  a8"     "8a   88        88"""""  ""     `Y8  88  88  a8P_____88  a8"    `Y88  
-88      `8b  8b       d8   88        88       ,adPPPPP88  88  88  8PP"""""""  8b       88  
-88      a8P  "8a,   ,a8"   88,       88       88,    ,88  88  88  "8b,   ,aa  "8a,   ,d88  
-88888888P"    `"YbbdP"'    "Y888     88       `"8bbdP"Y8  88  88   `"Ybbd8"'   `"8bbdP"Y8  
-                                                                                           
-                                                                                           
+██████╗  ██████╗ ████████╗    ███████╗ █████╗ ██╗██╗     ███████╗██████╗ 
+██╔══██╗██╔═══██╗╚══██╔══╝    ██╔════╝██╔══██╗██║██║     ██╔════╝██╔══██╗
+██████╔╝██║   ██║   ██║       █████╗  ███████║██║██║     █████╗  ██║  ██║
+██╔══██╗██║   ██║   ██║       ██╔══╝  ██╔══██║██║██║     ██╔══╝  ██║  ██║
+██████╔╝╚██████╔╝   ██║       ██║     ██║  ██║██║███████╗███████╗██████╔╝
+╚═════╝  ╚═════╝    ╚═╝       ╚═╝     ╚═╝  ╚═╝╚═╝╚══════╝╚══════╝╚═════╝                                                                          
 '''
 
 
@@ -89,7 +74,7 @@ def find_pythonw():
 
 def main():
     enable_ansi()
-    show_banner(BOOT_BANNER, "36", "Starting Discord moderation bot...")
+    show_banner(BOOT_BANNER, "36", "Starting Discord Moderation bot...")
 
     status_file = Path(tempfile.gettempdir()) / "discord_mod_bot_status.json"
     if status_file.exists():
@@ -117,13 +102,13 @@ def main():
                 show_banner(
                     SUCCESS_BANNER,
                     "92",
-                    "Bot online. Running quietly in the background.",
+                    "Bot online. Running Quietly in the Background.",
                 )
                 time.sleep(2)
                 return 0
 
             if state == "failed":
-                show_banner(FAIL_BANNER, "91", f"Startup failed: {message}")
+                show_banner(FAIL_BANNER, "91", f"Startup Failed: {message}")
                 input("\nPress Enter to close this window...")
                 return 1
 
@@ -132,8 +117,8 @@ def main():
             message = status.get(
                 "message", "Bot process exited before it came online."
             )
-            show_banner(FAIL_BANNER, "91", f"Startup failed: {message}")
-            input("\nPress Enter to close this window...")
+            show_banner(FAIL_BANNER, "91", f"Startup Failed: {message}")
+            input("\nPress Enter to Close this Window...")
             return 1
 
         time.sleep(1)

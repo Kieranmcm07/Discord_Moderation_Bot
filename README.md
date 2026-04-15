@@ -92,6 +92,8 @@ All settings live in `.env`:
 | `,unban <id> [reason]` | Unban by user ID |
 | `,kick @user [reason]` | Kick a user |
 | `,warn @user [reason]` | Issue a warning |
+| `,warnings @user` | Show active warning count and recent warning reasons |
+| `,clearwarns @user [amount] [reason]` | Remove one or more recent warnings |
 | `,timeout @user [duration] [reason]` | Timeout a user (10s, 5m, 2h, 1d) |
 | `,untimeout @user` | Remove a timeout |
 | `,purge <amount>` | Bulk delete messages |

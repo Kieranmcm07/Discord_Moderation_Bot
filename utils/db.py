@@ -207,6 +207,44 @@ async def get_warn_count(guild_id, user_id) -> int:
             return int(row[0]) if row else 0
 
 
+async def get_recent_warns(guild_id, user_id, limit=5) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT * FROM cases
+               WHERE guild_id=? AND user_id=? AND action='warn'
+               ORDER BY created_at DESC, id DESC
+               LIMIT ?""",
+            (guild_id, user_id, limit),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def clear_recent_warns(guild_id, user_id, amount: int) -> list[int]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT id FROM cases
+               WHERE guild_id=? AND user_id=? AND action='warn'
+               ORDER BY created_at DESC, id DESC
+               LIMIT ?""",
+            (guild_id, user_id, amount),
+        ) as cur:
+            rows = await cur.fetchall()
+
+        case_ids = [row[0] for row in rows]
+        if not case_ids:
+            return []
+
+        placeholders = ",".join("?" for _ in case_ids)
+        await db.execute(
+            f"DELETE FROM cases WHERE guild_id=? AND id IN ({placeholders})",
+            (guild_id, *case_ids),
+        )
+        await db.commit()
+        return case_ids
+
+
 async def upsert_escalation_rule(guild_id, warn_count: int, action: str, duration: str | None = None):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
