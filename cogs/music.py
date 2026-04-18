@@ -106,7 +106,22 @@ class Music(commands.Cog, name="Music"):
         if voice:
             return voice
 
-        return await channel.connect()
+        try:
+            return await channel.connect()
+        except RuntimeError as exc:
+            message = str(exc)
+            if "davey" in message.lower():
+                await ctx.send(
+                    embed=discord.Embed(
+                        description=(
+                            "Voice support is not installed on this PC yet. "
+                            "Install the `davey` package, then restart the bot."
+                        ),
+                        color=COLOR_ERROR,
+                    )
+                )
+                return None
+            raise
 
     async def extract_track(self, query: str, requester_id: int) -> Track:
         loop = asyncio.get_running_loop()
