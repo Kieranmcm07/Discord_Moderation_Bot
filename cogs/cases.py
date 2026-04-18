@@ -1,8 +1,5 @@
 """
 cogs/cases.py - case tracking commands.
-Every mod action creates a case automatically. These commands let you
-look up cases, view a user's history, and see recent mod activity.
-It's basically an audit log you can query from Discord.
 """
 
 from datetime import datetime
@@ -15,19 +12,21 @@ from utils.db import get_case, get_recent_cases, get_user_cases
 
 
 ACTION_EMOJI = {
-    "ban": "🔨",
-    "unban": "📤",
-    "kick": "👢",
-    "warn": "⚠️",
-    "clearwarns": "🧹",
-    "timeout": "🔇",
-    "untimeout": "🔊",
-    "mute": "🔇",
-    "unmute": "🔊",
+    "ban": "Ban",
+    "unban": "Unban",
+    "kick": "Kick",
+    "warn": "Warn",
+    "note": "Note",
+    "clearwarns": "Clear",
+    "timeout": "Timeout",
+    "untimeout": "Untimeout",
+    "mute": "Mute",
+    "unmute": "Unmute",
 }
 
 ACTION_LABELS = {
     "clearwarns": "Warnings Cleared",
+    "note": "Moderator Note",
 }
 
 
@@ -51,22 +50,20 @@ class Cases(commands.Cog, name="Cases"):
     @commands.command(name="case", help="Look up a specific case by its ID.")
     @commands.has_permissions(kick_members=True)
     async def case(self, ctx, case_id: int):
-        """
-        Usage: ,case <case_id>
-        Shows all the details for a single case number.
-        """
+        """Usage: ,case <case_id>"""
         data = await get_case(ctx.guild.id, case_id)
         if not data:
             return await ctx.send(
                 embed=discord.Embed(
-                    description=f"❌ Case #{case_id} not found.",
+                    description=f"Case #{case_id} not found.",
                     color=COLOR_ERROR,
                 )
             )
 
-        emoji = ACTION_EMOJI.get(data["action"], "📋")
+        action_label = get_action_label(data["action"])
+        action_prefix = ACTION_EMOJI.get(data["action"], "Case")
         embed = discord.Embed(
-            title=f"{emoji} Case #{case_id} - {get_action_label(data['action'])}",
+            title=f"{action_prefix} Case #{case_id} - {action_label}",
             color=COLOR_MOD,
             timestamp=datetime.fromisoformat(data["created_at"]),
         )
@@ -90,35 +87,32 @@ class Cases(commands.Cog, name="Cases"):
     )
     @commands.has_permissions(kick_members=True)
     async def history(self, ctx, target: discord.Member | discord.User):
-        """
-        Usage: ,history @user
-        Shows all cases linked to that user in this server.
-        Works on users who have left the server too - just paste their ID.
-        """
+        """Usage: ,history @user"""
         data = await get_user_cases(ctx.guild.id, target.id)
         if not data:
             return await ctx.send(
                 embed=discord.Embed(
-                    description=f"✅ No cases on record for {target}.",
+                    description=f"No cases on record for {target}.",
                     color=COLOR_INFO,
                 )
             )
 
         embed = discord.Embed(
-            title=f"📋 Moderation History - {target}",
+            title=f"Moderation History - {target}",
             color=COLOR_MOD,
             description=f"**{len(data)}** total case(s)",
         )
         embed.set_thumbnail(url=target.display_avatar.url)
 
         for case in data[:15]:
-            emoji = ACTION_EMOJI.get(case["action"], "📋")
+            action_label = get_action_label(case["action"])
+            action_prefix = ACTION_EMOJI.get(case["action"], "Case")
             mod = self.bot.get_user(case["mod_id"]) or f"ID: {case['mod_id']}"
             reason = format_case_reason(case)
             if len(reason) > 100:
                 reason = f"{reason[:97]}..."
             embed.add_field(
-                name=f"{emoji} Case #{case['id']} - {get_action_label(case['action'])}",
+                name=f"{action_prefix} Case #{case['id']} - {action_label}",
                 value=(
                     f"**Mod:** {mod}\n"
                     f"**Reason:** {reason}\n"
@@ -135,14 +129,11 @@ class Cases(commands.Cog, name="Cases"):
     @commands.command(
         name="recentcases",
         aliases=["modlog", "recent"],
-        help="See the latest 10 mod actions.",
+        help="See the latest mod actions.",
     )
     @commands.has_permissions(kick_members=True)
     async def recent_cases(self, ctx, limit: int = 10):
-        """
-        Usage: ,recentcases [limit]
-        Quick way to see what's been happening without digging through the log channel.
-        """
+        """Usage: ,recentcases [limit]"""
         limit = min(max(limit, 1), 25)
         data = await get_recent_cases(ctx.guild.id, limit)
 
@@ -154,13 +145,14 @@ class Cases(commands.Cog, name="Cases"):
                 )
             )
 
-        embed = discord.Embed(title=f"📋 Recent {len(data)} Cases", color=COLOR_MOD)
+        embed = discord.Embed(title=f"Recent {len(data)} Cases", color=COLOR_MOD)
         for case in data:
-            emoji = ACTION_EMOJI.get(case["action"], "📋")
+            action_label = get_action_label(case["action"])
+            action_prefix = ACTION_EMOJI.get(case["action"], "Case")
             target = self.bot.get_user(case["user_id"]) or f"ID: {case['user_id']}"
             mod = self.bot.get_user(case["mod_id"]) or f"ID: {case['mod_id']}"
             embed.add_field(
-                name=f"#{case['id']} {emoji} {get_action_label(case['action'])} - {target}",
+                name=f"#{case['id']} {action_prefix} - {action_label} - {target}",
                 value=f"By {mod} | {format_case_reason(case)}",
                 inline=False,
             )

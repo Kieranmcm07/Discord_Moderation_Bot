@@ -88,6 +88,7 @@ class MyBot(commands.Bot):
             "cogs.cases",
             "cogs.invite_logger",
             "cogs.activity",
+            "cogs.music",
             "cogs.server_management",
             "cogs.tickets",
             "cogs.help",

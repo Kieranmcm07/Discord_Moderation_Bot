@@ -1,6 +1,8 @@
 # requirements.txt
 # install with: pip install -r requirements.txt
 
-discord.py>=2.3.0     # the discord library — needs 2.x for timeout support
-aiosqlite>=0.19.0     # async SQLite so database calls don't block the bot
-python-dotenv>=1.0.0  # loads my .env file for secrets
+discord.py>=2.3.0
+aiosqlite>=0.19.0
+python-dotenv>=1.0.0
+PyNaCl>=1.5.0
+yt-dlp>=2025.1.0
