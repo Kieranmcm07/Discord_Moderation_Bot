@@ -6,17 +6,21 @@ import asyncio
 from datetime import datetime, timedelta
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from config import COLOR_ERROR, COLOR_MOD, COLOR_SUCCESS, MOD_LOG_CHANNEL_ID
 from utils.db import (
     add_case,
+    add_temp_ban,
     clear_recent_warns,
+    get_expired_temp_bans,
     get_escalation_rules,
     get_matching_escalation_rule,
     get_recent_warns,
+    get_temp_bans_for_guild,
     get_warn_count,
     init_db,
+    remove_temp_ban,
     remove_escalation_rule,
     upsert_escalation_rule,
 )
@@ -43,6 +47,10 @@ class Moderation(commands.Cog, name="Moderation"):
 
     def __init__(self, bot):
         self.bot = bot
+        self.tempban_loop.start()
+
+    def cog_unload(self):
+        self.tempban_loop.cancel()
 
     async def can_moderate(
         self,
@@ -224,6 +232,44 @@ class Moderation(commands.Cog, name="Moderation"):
         embed.set_footer(text=f"Case #{case_id}")
         return embed
 
+    @tasks.loop(minutes=1)
+    async def tempban_loop(self):
+        expired_bans = await get_expired_temp_bans(discord.utils.utcnow().isoformat())
+        for entry in expired_bans:
+            guild = self.bot.get_guild(entry["guild_id"])
+            if guild is None:
+                await remove_temp_ban(entry["guild_id"], entry["user_id"])
+                continue
+
+            try:
+                user = await self.bot.fetch_user(entry["user_id"])
+                await guild.unban(user, reason="Temporary ban expired.")
+                case_id = await add_case(
+                    guild.id,
+                    user.id,
+                    self.bot.user.id,
+                    "unban",
+                    "Temporary ban expired.",
+                )
+                embed = self.mod_embed(
+                    "Tempban Expired",
+                    user,
+                    self.bot.user,
+                    "Temporary ban expired.",
+                    case_id,
+                )
+                await self.send_mod_log(guild, embed)
+            except discord.NotFound:
+                pass
+            except discord.Forbidden:
+                continue
+            finally:
+                await remove_temp_ban(entry["guild_id"], entry["user_id"])
+
+    @tempban_loop.before_loop
+    async def before_tempban_loop(self):
+        await self.bot.wait_until_ready()
+
     @commands.command(name="ban", help="Ban a user from the server.")
     @commands.has_permissions(ban_members=True)
     @commands.bot_has_permissions(ban_members=True)
@@ -242,6 +288,67 @@ class Moderation(commands.Cog, name="Moderation"):
         await target.ban(reason=f"{reason or 'No reason given'} | Mod: {ctx.author}")
         case_id = await add_case(ctx.guild.id, target.id, ctx.author.id, "ban", reason)
         embed = self.mod_embed("Ban", target, ctx.author, reason, case_id)
+        await ctx.send(embed=embed)
+        await self.send_mod_log(ctx.guild, embed)
+
+    @commands.command(
+        name="tempban",
+        help="Ban a user for a limited duration and unban them automatically.",
+    )
+    @commands.has_permissions(ban_members=True)
+    @commands.bot_has_permissions(ban_members=True)
+    async def tempban(
+        self,
+        ctx,
+        target: discord.Member,
+        duration: str,
+        *,
+        reason: str = None,
+    ):
+        """Usage: ,tempban @user <duration> [reason]"""
+        seconds = parse_duration(duration)
+        if seconds is None:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="Bad duration format. Use something like `30m`, `12h`, or `7d`.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        blocked = await self.can_moderate(ctx, target, "tempban")
+        if blocked:
+            return await ctx.send(embed=blocked)
+
+        expires_at = discord.utils.utcnow() + timedelta(seconds=seconds)
+        await self.send_action_dm(
+            target,
+            guild_name=ctx.guild.name,
+            action_text="temporarily banned",
+            reason=reason,
+            duration=duration,
+        )
+        await target.ban(reason=f"{reason or 'No reason given'} | Tempban by {ctx.author}")
+        await add_temp_ban(
+            ctx.guild.id,
+            target.id,
+            ctx.author.id,
+            expires_at.isoformat(),
+            reason,
+        )
+        case_id = await add_case(
+            ctx.guild.id,
+            target.id,
+            ctx.author.id,
+            "tempban",
+            reason,
+            duration,
+        )
+        embed = self.mod_embed("Tempban", target, ctx.author, reason, case_id, duration)
+        embed.add_field(
+            name="Expires",
+            value=f"<t:{int(expires_at.timestamp())}:F>",
+            inline=False,
+        )
         await ctx.send(embed=embed)
         await self.send_mod_log(ctx.guild, embed)
 
@@ -729,6 +836,38 @@ class Moderation(commands.Cog, name="Moderation"):
                 value=action_text,
                 inline=True,
             )
+        await ctx.send(embed=embed)
+
+    @commands.command(
+        name="tempbans",
+        help="Show currently active temporary bans.",
+    )
+    @commands.has_permissions(ban_members=True)
+    async def tempbans(self, ctx):
+        entries = await get_temp_bans_for_guild(ctx.guild.id)
+        if not entries:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="There are no active temporary bans.",
+                    color=COLOR_SUCCESS,
+                )
+            )
+
+        embed = discord.Embed(title="Active Temporary Bans", color=COLOR_MOD)
+        for entry in entries[:15]:
+            user = self.bot.get_user(entry["user_id"]) or f"User ID {entry['user_id']}"
+            embed.add_field(
+                name=str(user),
+                value=(
+                    f"Expires: <t:{int(datetime.fromisoformat(entry['expires_at']).timestamp())}:R>\n"
+                    f"Reason: {entry['reason'] or 'No reason given'}"
+                ),
+                inline=False,
+            )
+
+        if len(entries) > 15:
+            embed.set_footer(text=f"Showing 15 of {len(entries)} temp bans")
+
         await ctx.send(embed=embed)
 
 

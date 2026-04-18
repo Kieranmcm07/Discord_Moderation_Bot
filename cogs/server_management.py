@@ -8,6 +8,20 @@ import discord
 from discord.ext import commands
 
 from config import COLOR_ERROR, COLOR_INFO, COLOR_SUCCESS
+from utils.db import (
+    clear_autorole,
+    clear_sticky_message,
+    get_all_sticky_messages,
+    get_autorole,
+    get_sticky_message,
+    init_db,
+    set_autorole,
+    set_sticky_message,
+    update_sticky_message_id,
+)
+
+
+NUMBER_EMOJIS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
 
 
 class ServerManagement(commands.Cog, name="Server Management"):
@@ -15,6 +29,48 @@ class ServerManagement(commands.Cog, name="Server Management"):
 
     def __init__(self, bot):
         self.bot = bot
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        role_id = await get_autorole(member.guild.id)
+        if not role_id:
+            return
+
+        role = member.guild.get_role(role_id)
+        if role is None:
+            await clear_autorole(member.guild.id)
+            return
+
+        try:
+            await member.add_roles(role, reason="Automatic role assignment")
+        except discord.Forbidden:
+            return
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        if message.author.bot or not message.guild:
+            return
+
+        sticky = await get_sticky_message(message.channel.id)
+        if not sticky:
+            return
+
+        previous_message_id = sticky.get("bot_message_id")
+        if previous_message_id:
+            try:
+                previous_message = await message.channel.fetch_message(previous_message_id)
+                await previous_message.delete()
+            except (discord.NotFound, discord.Forbidden):
+                pass
+
+        sticky_embed = discord.Embed(
+            description=sticky["content"],
+            color=COLOR_INFO,
+            timestamp=datetime.utcnow(),
+        )
+        sticky_embed.set_footer(text="Sticky message")
+        sticky_message = await message.channel.send(embed=sticky_embed)
+        await update_sticky_message_id(message.channel.id, sticky_message.id)
 
     @commands.command(
         name="serverinfo",
@@ -252,6 +308,267 @@ class ServerManagement(commands.Cog, name="Server Management"):
             pass
 
     @commands.command(
+        name="poll",
+        aliases=["vote"],
+        help="Create a reaction poll with up to 10 options.",
+    )
+    @commands.has_permissions(manage_messages=True)
+    async def poll(self, ctx, *, prompt: str):
+        """Usage: ,poll Question | Option 1 | Option 2 | [Option 3...]"""
+        parts = [part.strip() for part in prompt.split("|") if part.strip()]
+        if len(parts) < 3:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="Use `,poll Question | Option 1 | Option 2` with at least two options.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        question, *options = parts
+        if len(options) > 10:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="Polls can have up to 10 options.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        embed = discord.Embed(
+            title="Poll",
+            description=question,
+            color=COLOR_INFO,
+            timestamp=datetime.utcnow(),
+        )
+        embed.set_footer(text=f"Poll by {ctx.author}")
+        for index, option in enumerate(options):
+            embed.add_field(
+                name=f"{NUMBER_EMOJIS[index]} Option {index + 1}",
+                value=option,
+                inline=False,
+            )
+
+        poll_message = await ctx.send(embed=embed)
+        for index in range(len(options)):
+            await poll_message.add_reaction(NUMBER_EMOJIS[index])
+
+    @commands.command(
+        name="setautorole",
+        help="Automatically give new members a role when they join.",
+    )
+    @commands.has_permissions(manage_roles=True)
+    @commands.bot_has_permissions(manage_roles=True)
+    async def setautorole_command(self, ctx, role: discord.Role):
+        """Usage: ,setautorole <role>"""
+        if role == ctx.guild.default_role:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="You can't use @everyone as the autorole.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        if role >= ctx.guild.me.top_role:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="I can't assign that role because it's equal to or higher than my top role.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        if role >= ctx.author.top_role and ctx.author != ctx.guild.owner:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="You can't set an autorole that is equal to or higher than your top role.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        await set_autorole(ctx.guild.id, role.id)
+        await ctx.send(
+            embed=discord.Embed(
+                description=f"New members will now receive {role.mention} automatically.",
+                color=COLOR_SUCCESS,
+            )
+        )
+
+    @commands.command(
+        name="autorole",
+        help="Show the currently configured autorole.",
+    )
+    @commands.has_permissions(manage_roles=True)
+    async def autorole(self, ctx):
+        role_id = await get_autorole(ctx.guild.id)
+        if not role_id:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="No autorole is configured.",
+                    color=COLOR_INFO,
+                )
+            )
+
+        role = ctx.guild.get_role(role_id)
+        if role is None:
+            await clear_autorole(ctx.guild.id)
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="The saved autorole no longer exists, so I cleared it.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        await ctx.send(
+            embed=discord.Embed(
+                description=f"New members currently receive {role.mention}.",
+                color=COLOR_INFO,
+            )
+        )
+
+    @commands.command(
+        name="clearautorole",
+        aliases=["removeautorole"],
+        help="Disable automatic role assignment for new members.",
+    )
+    @commands.has_permissions(manage_roles=True)
+    async def clearautorole_command(self, ctx):
+        await clear_autorole(ctx.guild.id)
+        await ctx.send(
+            embed=discord.Embed(
+                description="Autorole has been disabled.",
+                color=COLOR_SUCCESS,
+            )
+        )
+
+    @commands.command(
+        name="setsticky",
+        help="Keep a sticky message at the bottom of a text channel.",
+    )
+    @commands.has_permissions(manage_channels=True)
+    @commands.bot_has_permissions(manage_messages=True, embed_links=True)
+    async def setsticky(
+        self,
+        ctx,
+        *,
+        details: str,
+    ):
+        """Usage: ,setsticky [#channel] <message>"""
+        channel = ctx.message.channel_mentions[0] if ctx.message.channel_mentions else ctx.channel
+        content = details
+        if ctx.message.channel_mentions:
+            mention = ctx.message.channel_mentions[0].mention
+            content = content.replace(mention, "", 1).strip()
+        else:
+            content = content.strip()
+
+        if not content:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="Give me a message to pin as a sticky.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        await set_sticky_message(ctx.guild.id, channel.id, content, ctx.author.id)
+        sticky_embed = discord.Embed(
+            description=content,
+            color=COLOR_INFO,
+            timestamp=datetime.utcnow(),
+        )
+        sticky_embed.set_footer(text="Sticky message")
+        sticky_message = await channel.send(embed=sticky_embed)
+        await update_sticky_message_id(channel.id, sticky_message.id)
+        await ctx.send(
+            embed=discord.Embed(
+                description=f"Sticky message set for {channel.mention}.",
+                color=COLOR_SUCCESS,
+            )
+        )
+
+    @commands.command(
+        name="sticky",
+        help="Show the sticky message for a channel.",
+    )
+    @commands.has_permissions(manage_channels=True)
+    async def sticky(self, ctx, channel: discord.TextChannel = None):
+        channel = channel or ctx.channel
+        sticky = await get_sticky_message(channel.id)
+        if not sticky:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description=f"No sticky message is set for {channel.mention}.",
+                    color=COLOR_INFO,
+                )
+            )
+
+        embed = discord.Embed(
+            title=f"Sticky Message - #{channel.name}",
+            description=sticky["content"],
+            color=COLOR_INFO,
+        )
+        await ctx.send(embed=embed)
+
+    @commands.command(
+        name="stickies",
+        help="List every sticky message configured in this server.",
+    )
+    @commands.has_permissions(manage_channels=True)
+    async def stickies(self, ctx):
+        entries = await get_all_sticky_messages(ctx.guild.id)
+        if not entries:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="No sticky messages are configured.",
+                    color=COLOR_INFO,
+                )
+            )
+
+        embed = discord.Embed(title="Sticky Messages", color=COLOR_INFO)
+        for entry in entries[:15]:
+            channel = ctx.guild.get_channel(entry["channel_id"])
+            channel_name = channel.mention if channel else f"`{entry['channel_id']}`"
+            content = entry["content"]
+            if len(content) > 100:
+                content = f"{content[:97]}..."
+            embed.add_field(name=channel_name, value=content, inline=False)
+
+        if len(entries) > 15:
+            embed.set_footer(text=f"Showing 15 of {len(entries)} sticky messages")
+
+        await ctx.send(embed=embed)
+
+    @commands.command(
+        name="clearsticky",
+        aliases=["removesticky"],
+        help="Remove the sticky message from a text channel.",
+    )
+    @commands.has_permissions(manage_channels=True)
+    async def clearsticky(self, ctx, channel: discord.TextChannel = None):
+        """Usage: ,clearsticky [#channel]"""
+        channel = channel or ctx.channel
+        sticky = await get_sticky_message(channel.id)
+        if not sticky:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description=f"No sticky message is set for {channel.mention}.",
+                    color=COLOR_INFO,
+                )
+            )
+
+        if sticky.get("bot_message_id"):
+            try:
+                sticky_message = await channel.fetch_message(sticky["bot_message_id"])
+                await sticky_message.delete()
+            except (discord.NotFound, discord.Forbidden):
+                pass
+
+        await clear_sticky_message(channel.id)
+        await ctx.send(
+            embed=discord.Embed(
+                description=f"Sticky message removed from {channel.mention}.",
+                color=COLOR_SUCCESS,
+            )
+        )
+
+    @commands.command(
         name="nick",
         aliases=["nickname"],
         help="Change a member's nickname.",
@@ -365,4 +682,5 @@ class ServerManagement(commands.Cog, name="Server Management"):
 
 
 async def setup(bot):
+    await init_db()
     await bot.add_cog(ServerManagement(bot))

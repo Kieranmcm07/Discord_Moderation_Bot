@@ -144,6 +144,45 @@ async def init_db():
             )
         """)
 
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS temp_bans (
+                guild_id    INTEGER NOT NULL,
+                user_id     INTEGER NOT NULL,
+                mod_id      INTEGER NOT NULL,
+                reason      TEXT,
+                expires_at  TIMESTAMP NOT NULL,
+                PRIMARY KEY (guild_id, user_id)
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS autorole_settings (
+                guild_id INTEGER PRIMARY KEY,
+                role_id  INTEGER NOT NULL
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS sticky_messages (
+                guild_id       INTEGER NOT NULL,
+                channel_id     INTEGER PRIMARY KEY,
+                content        TEXT NOT NULL,
+                created_by_id  INTEGER NOT NULL,
+                bot_message_id INTEGER
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS guild_settings (
+                guild_id            INTEGER PRIMARY KEY,
+                welcome_channel_id  INTEGER,
+                leave_channel_id    INTEGER,
+                welcome_message     TEXT,
+                leave_message       TEXT,
+                embed_color         INTEGER
+            )
+        """)
+
         await db.commit()
 
 
@@ -289,6 +328,57 @@ async def get_matching_escalation_rule(guild_id, warn_count: int) -> dict | None
             return dict(row) if row else None
 
 
+async def add_temp_ban(
+    guild_id,
+    user_id,
+    mod_id,
+    expires_at: str,
+    reason: str | None = None,
+):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO temp_bans (guild_id, user_id, mod_id, reason, expires_at)
+               VALUES (?,?,?,?,?)
+               ON CONFLICT(guild_id, user_id) DO UPDATE SET
+               mod_id=excluded.mod_id,
+               reason=excluded.reason,
+               expires_at=excluded.expires_at""",
+            (guild_id, user_id, mod_id, reason, expires_at),
+        )
+        await db.commit()
+
+
+async def remove_temp_ban(guild_id, user_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM temp_bans WHERE guild_id=? AND user_id=?",
+            (guild_id, user_id),
+        )
+        await db.commit()
+
+
+async def get_expired_temp_bans(now_iso: str) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM temp_bans WHERE expires_at<=? ORDER BY expires_at ASC",
+            (now_iso,),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def get_temp_bans_for_guild(guild_id) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM temp_bans WHERE guild_id=? ORDER BY expires_at ASC",
+            (guild_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(row) for row in rows]
+
+
 # ─────────────────────────────────────────────
 # Invite helpers
 # ─────────────────────────────────────────────
@@ -362,6 +452,176 @@ async def log_member_event(guild_id, user_id, event: str):
         await db.execute(
             "INSERT INTO member_log (guild_id, user_id, event) VALUES (?,?,?)",
             (guild_id, user_id, event)
+        )
+        await db.commit()
+
+
+async def set_autorole(guild_id, role_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO autorole_settings (guild_id, role_id)
+               VALUES (?,?)
+               ON CONFLICT(guild_id) DO UPDATE SET role_id=excluded.role_id""",
+            (guild_id, role_id),
+        )
+        await db.commit()
+
+
+async def clear_autorole(guild_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM autorole_settings WHERE guild_id=?",
+            (guild_id,),
+        )
+        await db.commit()
+
+
+async def get_autorole(guild_id) -> int | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT role_id FROM autorole_settings WHERE guild_id=?",
+            (guild_id,),
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else None
+
+
+async def set_sticky_message(guild_id, channel_id, content: str, created_by_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        current_message_id = await get_sticky_message_id(channel_id)
+        await db.execute(
+            """INSERT INTO sticky_messages (
+                   guild_id, channel_id, content, created_by_id, bot_message_id
+               ) VALUES (?,?,?,?,?)
+               ON CONFLICT(channel_id) DO UPDATE SET
+               guild_id=excluded.guild_id,
+               content=excluded.content,
+               created_by_id=excluded.created_by_id,
+               bot_message_id=excluded.bot_message_id""",
+            (guild_id, channel_id, content, created_by_id, current_message_id),
+        )
+        await db.commit()
+
+
+async def clear_sticky_message(channel_id):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM sticky_messages WHERE channel_id=?",
+            (channel_id,),
+        )
+        await db.commit()
+
+
+async def get_sticky_message(channel_id) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM sticky_messages WHERE channel_id=?",
+            (channel_id,),
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def get_all_sticky_messages(guild_id) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM sticky_messages WHERE guild_id=? ORDER BY channel_id ASC",
+            (guild_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def get_sticky_message_id(channel_id) -> int | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT bot_message_id FROM sticky_messages WHERE channel_id=?",
+            (channel_id,),
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row and row[0] else None
+
+
+async def update_sticky_message_id(channel_id, message_id: int | None):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE sticky_messages SET bot_message_id=? WHERE channel_id=?",
+            (message_id, channel_id),
+        )
+        await db.commit()
+
+
+async def get_guild_settings(guild_id) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM guild_settings WHERE guild_id=?",
+            (guild_id,),
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def upsert_guild_settings(
+    guild_id,
+    *,
+    welcome_channel_id=None,
+    leave_channel_id=None,
+    welcome_message=None,
+    leave_message=None,
+    embed_color=None,
+):
+    current = await get_guild_settings(guild_id) or {}
+    values = {
+        "welcome_channel_id": (
+            welcome_channel_id
+            if welcome_channel_id is not None
+            else current.get("welcome_channel_id")
+        ),
+        "leave_channel_id": (
+            leave_channel_id
+            if leave_channel_id is not None
+            else current.get("leave_channel_id")
+        ),
+        "welcome_message": (
+            welcome_message
+            if welcome_message is not None
+            else current.get("welcome_message")
+        ),
+        "leave_message": (
+            leave_message
+            if leave_message is not None
+            else current.get("leave_message")
+        ),
+        "embed_color": (
+            embed_color
+            if embed_color is not None
+            else current.get("embed_color")
+        ),
+    }
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO guild_settings (
+                   guild_id, welcome_channel_id, leave_channel_id,
+                   welcome_message, leave_message, embed_color
+               ) VALUES (?,?,?,?,?,?)
+               ON CONFLICT(guild_id) DO UPDATE SET
+               welcome_channel_id=excluded.welcome_channel_id,
+               leave_channel_id=excluded.leave_channel_id,
+               welcome_message=excluded.welcome_message,
+               leave_message=excluded.leave_message,
+               embed_color=excluded.embed_color""",
+            (
+                guild_id,
+                values["welcome_channel_id"],
+                values["leave_channel_id"],
+                values["welcome_message"],
+                values["leave_message"],
+                values["embed_color"],
+            ),
         )
         await db.commit()
 

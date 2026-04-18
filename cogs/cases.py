@@ -15,6 +15,7 @@ ACTION_EMOJI = {
     "ban": "Ban",
     "unban": "Unban",
     "kick": "Kick",
+    "tempban": "Tempban",
     "warn": "Warn",
     "note": "Note",
     "clearwarns": "Clear",

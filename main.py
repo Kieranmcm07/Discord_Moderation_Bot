@@ -91,6 +91,8 @@ class MyBot(commands.Bot):
             "cogs.music",
             "cogs.server_management",
             "cogs.tickets",
+            "cogs.configuration",
+            "cogs.fun",
             "cogs.help",
         ]
 
