@@ -3,21 +3,26 @@
 A Discord bot focused on moderation, staff workflows, and day-to-day server utilities.
 It is built with `discord.py` and SQLite, so it is easy to run locally without extra services.
 
-## What It Can Do
+This project is especially suited to small and mid-sized servers that want:
 
-- Moderation commands: `ban`, `tempban`, `kick`, `warn`, `timeout`, `unban`, `purge`, `clean`, `slowmode`
-- Warning escalation rules: automatically timeout, kick, or ban members after a chosen warning threshold
-- Case tracking: every moderation action is saved with a case ID for later lookup
-- Invite logging: track which invite was used when members join
-- Activity stats: message leaderboard, voice time leaderboard, and per-user stats
-- Server utilities: server info, user info, role info, announcements, nickname tools, lock/unlock
-- Tickets: private support tickets with staff roles, categories, and transcripts
-- Autorole: automatically give new members a starter role
-- Sticky messages: keep important channel guidance visible at the bottom of a channel
-- Polls: create simple reaction-based polls
-- Welcome and leave messages: configure custom join/leave embeds with placeholders
-- Embed theming: use the bot avatar as branding and set a server-wide embed color
-- Fun commands: `8ball`, `coinflip`, `roll`, `choose`, `ship`
+- solid moderation tools
+- readable staff-facing embeds
+- ticket support
+- activity tracking
+- server customization without a web dashboard
+
+## Highlights
+
+- Moderation commands for bans, tempbans, kicks, warns, timeouts, purge, clean, and slowmode
+- Warning escalation rules that can automatically timeout, kick, or ban after a threshold
+- Case tracking with history, recent cases, case search, and follow-up case comments
+- Invite logging with join context and a basic account-age check
+- Activity tracking for chat and voice with leaderboards and per-user stats
+- Ticket system with category buttons, transcripts, staff roles, and private ticket channels
+- Sticky messages, autorole, polls, announcements, lock/unlock, and nickname tools
+- Reaction-role buttons so members can self-assign roles
+- Server branding for embeds with custom color plus an optional shared image or GIF
+- Custom help command grouped by feature area
 
 ## Setup
 
@@ -52,12 +57,14 @@ PREFIX=,
 ### 4. Run the bot
 
 ```bash
-python main.py
+py -3 main.py
 ```
+
+If `py` is not available on your system, use the Python command name that works on your machine.
 
 ## Windows Startup Scripts
 
-The repo includes a few helper scripts for Windows:
+The repo includes helper scripts for Windows:
 
 - `start_bot.bat`: launches the bot with the custom startup flow
 - `install_startup.bat`: adds the bot to Windows startup
@@ -65,7 +72,7 @@ The repo includes a few helper scripts for Windows:
 
 ## Configuration
 
-All settings live in `.env`.
+Environment values live in `.env`.
 
 | Variable | Description |
 | --- | --- |
@@ -76,6 +83,16 @@ All settings live in `.env`.
 | `MOD_LOG_CHANNEL_ID` | Optional moderation log channel |
 | `INVITE_LOG_CHANNEL_ID` | Optional invite log channel |
 | `JOIN_LOG_CHANNEL_ID` | Optional join/leave log channel |
+
+Guild-specific customization is handled through commands such as:
+
+- `,settings`
+- `,setembedcolor`
+- `,setembedimage`
+- `,setwelcomechannel`
+- `,setwelcomemessage`
+- `,setleavechannel`
+- `,setleavemessage`
 
 ## Commands
 
@@ -108,6 +125,8 @@ All settings live in `.env`.
 | `,case <id>` | Look up one case |
 | `,history @user` | Show a user's moderation history |
 | `,recentcases [limit]` | Show recent moderation actions |
+| `,searchcases <query>` | Search recent cases by action or reason text |
+| `,casecomment <case_id> <note>` | Add a follow-up note linked to an existing case |
 
 ### Activity
 
@@ -150,6 +169,17 @@ All settings live in `.env`.
 | `,setleavechannel #channel` | Set the custom leave channel |
 | `,setleavemessage <message>` | Set the custom leave template |
 | `,setembedcolor <hex>` | Set the default embed color |
+| `,setembedimage <url>` | Set a shared image or GIF for bot embeds |
+| `,clearembedimage` | Remove the shared image or GIF from bot embeds |
+
+### Reaction Roles
+
+| Command | Description |
+| --- | --- |
+| `,rradd @role [Label \| Emoji]` | Add or update a self-assignable role option |
+| `,rrremove @role` | Remove a self-assignable role option |
+| `,rrlist` | List configured reaction roles |
+| `,rrpanel [#channel]` | Post the role button panel |
 
 ### Fun
 
@@ -165,7 +195,7 @@ All settings live in `.env`.
 
 | Command | Description |
 | --- | --- |
-| `,setticketcategory <category>` | Set the ticket category |
+| `,setticketcategory <category>` | Set the category where ticket channels are created |
 | `,setticketlog <#channel>` | Set the ticket log channel |
 | `,ticketroleadd <role>` | Allow a role to access tickets |
 | `,ticketroleremove <role>` | Remove a ticket staff role |
@@ -178,6 +208,24 @@ All settings live in `.env`.
 | `,ticketadd @user` | Add a user to the ticket |
 | `,ticketremove @user` | Remove a user from the ticket |
 | `,closeticket` | Close the current ticket |
+
+### Other
+
+| Command | Description |
+| --- | --- |
+| `,help [command]` | Show grouped help or detailed help for one command |
+| `,invites` | Show active invites in the server |
+
+## Embed Branding
+
+The bot now applies shared branding to embeds more consistently.
+
+- The bot avatar is used as the thumbnail automatically
+- Branded embeds get a cleaner shared footer
+- Guilds can set a custom embed color
+- Guilds can optionally set one image or GIF that appears under bot embeds
+
+This makes the bot feel more polished without requiring every command to be redesigned by hand.
 
 ## Required Discord Permissions
 
@@ -215,11 +263,13 @@ Recommended privileged intents:
 |   |-- invite_logger.py
 |   |-- moderation.py
 |   |-- music.py
+|   |-- reaction_roles.py
 |   |-- server_management.py
 |   `-- tickets.py
 |-- data/
 |-- utils/
-|   `-- db.py
+|   |-- db.py
+|   `-- embeds.py
 |-- .env.example
 |-- config.py
 |-- launcher.py
@@ -231,8 +281,9 @@ Recommended privileged intents:
 
 - The bot stores its data in SQLite, by default at `data/bot.db`.
 - The custom help command is available with `,help`.
-- Temporary bans are automatically checked and lifted in the background.
-- Welcome/leave templates support `{user}`, `{username}`, `{server}`, and `{count}` placeholders.
+- Temporary bans are automatically checked and lifted in the background while the bot is online.
+- Welcome and leave templates support `{user}`, `{username}`, `{server}`, and `{count}` placeholders.
+- Voice tracking is lightweight and only records time while the bot is running.
 
 ## License
 

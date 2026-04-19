@@ -1,23 +1,20 @@
 """
-cogs/invite_logger.py - invite tracking and join/leave logging.
+Invite tracking and join/leave logging.
+
+This cog gives moderators a quick picture of where members came from and whether
+an account looks brand new or more established.
 """
 
 import discord
 from discord.ext import commands
 
-from config import (
-    COLOR_ERROR,
-    COLOR_INFO,
-    COLOR_SUCCESS,
-    INVITE_LOG_CHANNEL_ID,
-    JOIN_LOG_CHANNEL_ID,
-)
+from config import COLOR_ERROR, COLOR_INFO, COLOR_SUCCESS, INVITE_LOG_CHANNEL_ID, JOIN_LOG_CHANNEL_ID
 from utils.db import log_member_event, upsert_invite
 from utils.embeds import make_embed
 
 
 class InviteLogger(commands.Cog, name="Invite Logger"):
-    """Tracks invite usage and logs member joins/leaves."""
+    """Track invite usage and send join or leave logs."""
 
     def __init__(self, bot):
         self.bot = bot
@@ -25,10 +22,12 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
 
     @commands.Cog.listener()
     async def on_ready(self):
+        """Cache the current invite usage counts for every guild we can access."""
         for guild in self.bot.guilds:
             await self._cache_invites(guild)
 
     async def _cache_invites(self, guild: discord.Guild):
+        """Store the current invite usage counts so later joins can be compared."""
         try:
             invites = await guild.invites()
             self.invite_cache[guild.id] = {invite.code: invite.uses for invite in invites}
@@ -44,6 +43,7 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
+        """Log a join event and try to identify which invite was used."""
         guild = member.guild
         await log_member_event(guild.id, member.id, "join")
 
@@ -76,6 +76,11 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
             value=f"<t:{int(member.created_at.timestamp())}:R>",
             inline=True,
         )
+        embed.add_field(
+            name="Account Age Check",
+            value="New account" if (discord.utils.utcnow() - member.created_at).days < 7 else "Established account",
+            inline=True,
+        )
 
         if used_invite:
             inviter = used_invite.inviter
@@ -95,29 +100,26 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
 
         embed.add_field(name="Member Count", value=str(guild.member_count), inline=True)
 
-        join_channel_id = JOIN_LOG_CHANNEL_ID
-        invite_channel_id = INVITE_LOG_CHANNEL_ID
+        if JOIN_LOG_CHANNEL_ID:
+            join_channel = guild.get_channel(JOIN_LOG_CHANNEL_ID)
+            if join_channel:
+                await join_channel.send(embed=embed)
 
-        if join_channel_id:
-            channel = guild.get_channel(join_channel_id)
-            if channel:
-                await channel.send(embed=embed)
-
-        if invite_channel_id and invite_channel_id != join_channel_id:
-            channel = guild.get_channel(invite_channel_id)
-            if channel:
-                await channel.send(embed=embed)
+        if INVITE_LOG_CHANNEL_ID and INVITE_LOG_CHANNEL_ID != JOIN_LOG_CHANNEL_ID:
+            invite_channel = guild.get_channel(INVITE_LOG_CHANNEL_ID)
+            if invite_channel:
+                await invite_channel.send(embed=embed)
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
+        """Log when a member leaves the server."""
         guild = member.guild
         await log_member_event(guild.id, member.id, "leave")
 
-        leave_channel_id = JOIN_LOG_CHANNEL_ID
-        if not leave_channel_id:
+        if not JOIN_LOG_CHANNEL_ID:
             return
 
-        channel = guild.get_channel(leave_channel_id)
+        channel = guild.get_channel(JOIN_LOG_CHANNEL_ID)
         if not channel:
             return
 
@@ -139,6 +141,7 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
 
     @commands.Cog.listener()
     async def on_invite_create(self, invite: discord.Invite):
+        """Update the cache when a new invite is created."""
         if invite.guild.id not in self.invite_cache:
             self.invite_cache[invite.guild.id] = {}
         self.invite_cache[invite.guild.id][invite.code] = invite.uses
@@ -151,18 +154,21 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
 
     @commands.Cog.listener()
     async def on_invite_delete(self, invite: discord.Invite):
+        """Drop deleted invites from the local cache."""
         cache = self.invite_cache.get(invite.guild.id, {})
         cache.pop(invite.code, None)
 
     @commands.command(name="invites", help="Show all active invites in the server.")
     @commands.has_permissions(manage_guild=True)
     async def show_invites(self, ctx):
+        """Usage: ,invites"""
         try:
             invites = await ctx.guild.invites()
         except discord.Forbidden:
             embed = await make_embed(
                 self.bot,
                 guild=ctx.guild,
+                title="Cannot Read Invites",
                 description="I need `Manage Server` permission to view invites.",
                 color=COLOR_ERROR,
             )
@@ -172,7 +178,8 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
             embed = await make_embed(
                 self.bot,
                 guild=ctx.guild,
-                description="No active invites.",
+                title="Active Invites",
+                description="There are no active invites right now.",
                 color=COLOR_INFO,
             )
             return await ctx.send(embed=embed)

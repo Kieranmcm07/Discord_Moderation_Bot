@@ -1,5 +1,8 @@
 """
-cogs/help.py - custom help command with cleaner branded embeds.
+Custom help command.
+
+The bot has enough commands now that grouping and presentation matter more than
+just dumping a plain command list.
 """
 
 import discord
@@ -10,25 +13,22 @@ from utils.embeds import make_embed
 
 
 class Help(commands.Cog, name="Help"):
-    """The help command."""
+    """Friendly grouped help output."""
 
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command(name="help", help="Shows this help message.")
+    @commands.command(name="help", help="Show the command guide.")
     async def help_command(self, ctx, *, command_name: str = None):
-        """
-        Usage: ,help [command]
-        Without an argument it shows all commands grouped by category.
-        With a command name it shows detailed usage for that command.
-        """
+        """Show either the grouped command list or one command's details."""
         if command_name:
             cmd = self.bot.get_command(command_name)
             if not cmd:
                 embed = await make_embed(
                     self.bot,
                     guild=ctx.guild,
-                    description=f"Command `{command_name}` not found.",
+                    title="Command Not Found",
+                    description=f"I could not find a command named `{command_name}`.",
                     color=COLOR_ERROR,
                 )
                 return await ctx.send(embed=embed)
@@ -40,12 +40,16 @@ class Help(commands.Cog, name="Help"):
                 description=cmd.help or "No description provided.",
                 color=COLOR_INFO,
             )
+            usage = cmd.usage or f"{PREFIX}{cmd.qualified_name}"
+            embed.add_field(name="Usage", value=f"`{usage}`", inline=False)
             if cmd.aliases:
                 embed.add_field(
                     name="Aliases",
                     value=", ".join(f"`{alias}`" for alias in cmd.aliases),
                     inline=False,
                 )
+            if cmd.cog_name:
+                embed.add_field(name="Category", value=cmd.cog_name, inline=True)
             await ctx.send(embed=embed)
             return
 
@@ -53,7 +57,7 @@ class Help(commands.Cog, name="Help"):
             self.bot,
             guild=ctx.guild,
             title=f"{self.bot.user.name} Help",
-            description=f"Prefix: `{PREFIX}` | Use `{PREFIX}help <command>` for more details.",
+            description=f"Prefix: `{PREFIX}`\nUse `{PREFIX}help <command>` for more detail on one command.",
             color=COLOR_INFO,
         )
         embed.set_author(
@@ -65,8 +69,13 @@ class Help(commands.Cog, name="Help"):
             cog_commands = [cmd for cmd in cog.get_commands() if not cmd.hidden]
             if not cog_commands:
                 continue
-            command_list = " ".join(f"`{PREFIX}{command.name}`" for command in cog_commands)
-            embed.add_field(name=cog_name, value=command_list, inline=False)
+
+            command_list = ", ".join(f"`{PREFIX}{command.name}`" for command in cog_commands)
+            embed.add_field(
+                name=f"{cog_name} ({len(cog_commands)})",
+                value=command_list,
+                inline=False,
+            )
 
         embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url)
         await ctx.send(embed=embed)

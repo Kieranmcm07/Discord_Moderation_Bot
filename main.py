@@ -1,6 +1,9 @@
 """
-main.py - the heart of the bot, this is where everything boots up.
-I kept it clean so it's easy to add or remove cogs without breaking anything.
+Bot entry point.
+
+This file handles startup, logging, the custom context class, cog loading, and
+global command errors. Keeping those pieces together makes the rest of the
+project easier to reason about.
 """
 
 import argparse
@@ -12,10 +15,12 @@ from pathlib import Path
 import discord
 from discord.ext import commands
 
-from config import BOT_TOKEN, PREFIX, OWNER_IDS
+from config import BOT_TOKEN, OWNER_IDS, PREFIX
+from utils.embeds import decorate_embed, make_embed
 
 
 def parse_args():
+    """Parse a small set of startup flags used by the launcher scripts."""
     parser = argparse.ArgumentParser(description="Run the Discord moderation bot.")
     parser.add_argument(
         "--background",
@@ -34,6 +39,7 @@ STATUS_FILE = Path(ARGS.status_file).resolve() if ARGS.status_file else None
 
 
 def configure_logging():
+    """Log to file every time, and to the console unless background mode is used."""
     handlers = [logging.FileHandler("bot.log", encoding="utf-8")]
     if not ARGS.background:
         handlers.append(logging.StreamHandler())
@@ -46,6 +52,7 @@ def configure_logging():
 
 
 def write_status(state: str, message: str):
+    """Write launcher-friendly boot state updates when a status file is supplied."""
     if not STATUS_FILE:
         return
 
@@ -59,30 +66,46 @@ def write_status(state: str, message: str):
 configure_logging()
 log = logging.getLogger("bot")
 
-# intents - discord requires me to opt in to the events I want to listen to
+# The bot only enables the intents it actually uses.
 intents = discord.Intents.default()
-intents.members = True  # needed for join/leave events and member lookups
-intents.message_content = True  # needed to read message content for commands
+intents.members = True
+intents.message_content = True
 intents.guilds = True
-intents.invites = True  # needed for invite tracking
+intents.invites = True
+
+
+class BotContext(commands.Context):
+    """Context subclass that automatically brands embeds before they are sent."""
+
+    async def send(self, content=None, **kwargs):
+        embed = kwargs.get("embed")
+        embeds = kwargs.get("embeds")
+
+        if embed is not None:
+            kwargs["embed"] = await decorate_embed(self.bot, self.guild, embed)
+
+        if embeds is not None:
+            kwargs["embeds"] = [
+                await decorate_embed(self.bot, self.guild, item) for item in embeds
+            ]
+
+        return await super().send(content=content, **kwargs)
 
 
 class MyBot(commands.Bot):
+    """Custom bot class so shared behaviour lives in one obvious place."""
+
     def __init__(self):
         super().__init__(
             command_prefix=PREFIX,
             intents=intents,
             owner_ids=set(OWNER_IDS),
-            help_command=None,  # I wrote my own help command so removing the default
+            help_command=None,
             case_insensitive=True,
         )
 
     async def setup_hook(self):
-        """
-        This runs before the bot connects - perfect place to load cogs
-        and set up the database before anyone can use commands.
-        """
-        # load all my cogs (each file handles a different feature area)
+        """Load all cogs before connecting so commands are ready immediately."""
         cogs_to_load = [
             "cogs.moderation",
             "cogs.cases",
@@ -92,6 +115,7 @@ class MyBot(commands.Bot):
             "cogs.server_management",
             "cogs.tickets",
             "cogs.configuration",
+            "cogs.reaction_roles",
             "cogs.fun",
             "cogs.help",
         ]
@@ -99,25 +123,25 @@ class MyBot(commands.Bot):
         for cog in cogs_to_load:
             try:
                 await self.load_extension(cog)
-                log.info(f"Loaded cog: {cog}")
+                log.info("Loaded cog: %s", cog)
             except Exception as exc:
-                log.error(f"Failed to load cog {cog}: {exc}")
+                log.error("Failed to load cog %s: %s", cog, exc)
 
-        # sync slash commands globally
-        # I comment this out after first run so it doesn't slow boot
-        # await self.tree.sync()
         log.info("setup_hook complete")
 
+    async def get_context(self, origin, /, *, cls=commands.Context):
+        """Always return our branded context subclass."""
+        return await super().get_context(origin, cls=BotContext)
+
     async def on_ready(self):
-        """Fires when the bot is connected and ready to go."""
-        log.info(f"Logged in as {self.user} (ID: {self.user.id})")
-        log.info(f"Serving {len(self.guilds)} guild(s)")
+        """Log a clean ready message and refresh the public presence text."""
+        log.info("Logged in as %s (ID: %s)", self.user, self.user.id)
+        log.info("Serving %s guild(s)", len(self.guilds))
         write_status(
             "ready",
             f"Logged in as {self.user} across {len(self.guilds)} guild(s)",
         )
 
-        # set a custom status so people know it's alive
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.watching,
@@ -126,56 +150,72 @@ class MyBot(commands.Bot):
         )
 
     async def on_command_error(self, ctx: commands.Context, error):
-        """
-        Global error handler - catches anything that slips through
-        the cog-level handlers so the bot never just silently fails.
-        """
+        """Keep user-facing errors friendly while still logging real failures."""
         if isinstance(error, commands.CommandNotFound):
-            return  # don't spam the chat with "command not found" every typo
+            return
 
         if isinstance(error, commands.MissingPermissions):
             await ctx.send(
-                embed=discord.Embed(
-                    description="You don't have permission to use that command.",
+                embed=await make_embed(
+                    self,
+                    guild=ctx.guild,
+                    title="Permission Required",
+                    description="You do not have permission to use that command.",
                     color=discord.Color.red(),
                 )
             )
-        elif isinstance(error, commands.BotMissingPermissions):
+            return
+
+        if isinstance(error, commands.BotMissingPermissions):
             await ctx.send(
-                embed=discord.Embed(
-                    description=f"I'm missing permissions: `{', '.join(error.missing_permissions)}`",
+                embed=await make_embed(
+                    self,
+                    guild=ctx.guild,
+                    title="Missing Bot Permissions",
+                    description=f"I need these permissions first: `{', '.join(error.missing_permissions)}`",
                     color=discord.Color.red(),
                 )
             )
-        elif isinstance(error, commands.MissingRequiredArgument):
+            return
+
+        if isinstance(error, commands.MissingRequiredArgument):
             await ctx.send(
-                embed=discord.Embed(
-                    description=f"Missing argument: `{error.param.name}` - use `{PREFIX}help {ctx.command}` for usage.",
+                embed=await make_embed(
+                    self,
+                    guild=ctx.guild,
+                    title="Missing Argument",
+                    description=f"`{error.param.name}` is required. Try `{PREFIX}help {ctx.command}` for usage.",
                     color=discord.Color.orange(),
                 )
             )
-        elif isinstance(error, commands.BadArgument):
+            return
+
+        if isinstance(error, commands.BadArgument):
             await ctx.send(
-                embed=discord.Embed(
-                    description="Bad argument - make sure you're passing the right type (for example a valid user mention).",
+                embed=await make_embed(
+                    self,
+                    guild=ctx.guild,
+                    title="Bad Argument",
+                    description="That input does not match what the command expects. Try a valid mention, role, channel, or number.",
                     color=discord.Color.orange(),
                 )
             )
-        else:
-            # log anything unexpected so I can debug it later
-            log.error(
-                f"Unhandled error in command {ctx.command}: {error}", exc_info=error
+            return
+
+        log.error("Unhandled error in command %s: %s", ctx.command, error, exc_info=error)
+        await ctx.send(
+            embed=await make_embed(
+                self,
+                guild=ctx.guild,
+                title="Something Went Wrong",
+                description="That command hit an unexpected error. I logged the details in `bot.log` for debugging.",
+                color=discord.Color.red(),
             )
-            await ctx.send(
-                embed=discord.Embed(
-                    description="Something went wrong. Check the logs.",
-                    color=discord.Color.red(),
-                )
-            )
+        )
 
 
 async def main():
-    """Start the bot."""
+    """Create the bot instance and connect to Discord."""
     bot = MyBot()
     async with bot:
         await bot.start(BOT_TOKEN)
