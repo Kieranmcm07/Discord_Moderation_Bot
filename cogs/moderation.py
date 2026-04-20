@@ -101,9 +101,7 @@ class Moderation(commands.Cog, name="Moderation"):
 
         blocked = await self.can_moderate(ctx, target, rule["action"])
         if blocked:
-            blocked.description = (
-                f"Escalation matched at **{warn_count}** warns, but {blocked.description}"
-            )
+            blocked.description = f"Escalation matched at **{warn_count}** warns, but {blocked.description}"
             return blocked
 
         action = rule["action"]
@@ -155,7 +153,9 @@ class Moderation(commands.Cog, name="Moderation"):
                 reason=reason,
             )
             await target.kick(reason=f"{reason} | Mod: {ctx.author}")
-            case_id = await add_case(ctx.guild.id, target.id, ctx.author.id, "kick", reason)
+            case_id = await add_case(
+                ctx.guild.id, target.id, ctx.author.id, "kick", reason
+            )
             return self.mod_embed("Auto Kick", target, ctx.author, reason, case_id)
 
         if action == "ban":
@@ -166,7 +166,9 @@ class Moderation(commands.Cog, name="Moderation"):
                 reason=reason,
             )
             await target.ban(reason=f"{reason} | Mod: {ctx.author}")
-            case_id = await add_case(ctx.guild.id, target.id, ctx.author.id, "ban", reason)
+            case_id = await add_case(
+                ctx.guild.id, target.id, ctx.author.id, "ban", reason
+            )
             return self.mod_embed("Auto Ban", target, ctx.author, reason, case_id)
 
         return None
@@ -201,7 +203,9 @@ class Moderation(commands.Cog, name="Moderation"):
         """Send a consistent moderation DM for actions that affect a user."""
         description = f"You were {action_text} in **{guild_name}**."
         if duration:
-            description = f"You were {action_text} in **{guild_name}** for `{duration}`."
+            description = (
+                f"You were {action_text} in **{guild_name}** for `{duration}`."
+            )
 
         await self.try_dm(
             user,
@@ -329,7 +333,9 @@ class Moderation(commands.Cog, name="Moderation"):
             reason=reason,
             duration=duration,
         )
-        await target.ban(reason=f"{reason or 'No reason given'} | Tempban by {ctx.author}")
+        await target.ban(
+            reason=f"{reason or 'No reason given'} | Tempban by {ctx.author}"
+        )
         await add_temp_ban(
             ctx.guild.id,
             target.id,
@@ -484,7 +490,9 @@ class Moderation(commands.Cog, name="Moderation"):
                 if len(reason) > 90:
                     reason = f"{reason[:87]}..."
                 lines.append(f"`#{warn['id']}` <t:{timestamp}:d> - {reason}")
-            embed.add_field(name="Recent warnings", value="\n".join(lines), inline=False)
+            embed.add_field(
+                name="Recent warnings", value="\n".join(lines), inline=False
+            )
         else:
             embed.add_field(
                 name="Recent warnings",
@@ -648,7 +656,9 @@ class Moderation(commands.Cog, name="Moderation"):
             action_text="removed from timeout",
             reason=reason,
         )
-        case_id = await add_case(ctx.guild.id, target.id, ctx.author.id, "untimeout", reason)
+        case_id = await add_case(
+            ctx.guild.id, target.id, ctx.author.id, "untimeout", reason
+        )
         embed = self.mod_embed("Untimeout", target, ctx.author, reason, case_id)
         await ctx.send(embed=embed)
         await self.send_mod_log(ctx.guild, embed)

@@ -183,7 +183,9 @@ class ServerManagement(commands.Cog, name="Server Management"):
     async def user_info(self, ctx, member: discord.Member = None):
         """Usage: ,userinfo [@user]"""
         member = member or ctx.author
-        roles = [role.mention for role in reversed(member.roles) if role.name != "@everyone"]
+        roles = [
+            role.mention for role in reversed(member.roles) if role.name != "@everyone"
+        ]
         roles_str = ", ".join(roles[:15]) if roles else "None"
         if len(roles) > 15:
             roles_str += f" (+{len(roles) - 15} more)"
@@ -226,7 +228,9 @@ class ServerManagement(commands.Cog, name="Server Management"):
 
         await ctx.send(embed=embed)
 
-    @commands.command(name="avatar", aliases=["av", "pfp"], help="Show a user's avatar.")
+    @commands.command(
+        name="avatar", aliases=["av", "pfp"], help="Show a user's avatar."
+    )
     async def avatar(self, ctx, member: discord.Member = None):
         """Usage: ,avatar [@user]"""
         member = member or ctx.author
@@ -263,7 +267,9 @@ class ServerManagement(commands.Cog, name="Server Management"):
             value="Yes" if role.mentionable else "No",
             inline=True,
         )
-        embed.add_field(name="Hoisted", value="Yes" if role.hoist else "No", inline=True)
+        embed.add_field(
+            name="Hoisted", value="Yes" if role.hoist else "No", inline=True
+        )
         embed.add_field(
             name="Created",
             value=f"<t:{int(role.created_at.timestamp())}:D>",
@@ -271,10 +277,14 @@ class ServerManagement(commands.Cog, name="Server Management"):
         )
         await ctx.send(embed=embed)
 
-    @commands.command(name="lock", help="Lock a channel so @everyone can't send messages.")
+    @commands.command(
+        name="lock", help="Lock a channel so @everyone can't send messages."
+    )
     @commands.has_permissions(manage_channels=True)
     @commands.bot_has_permissions(manage_channels=True)
-    async def lock(self, ctx, channel: discord.TextChannel = None, *, reason: str = None):
+    async def lock(
+        self, ctx, channel: discord.TextChannel = None, *, reason: str = None
+    ):
         """Usage: ,lock [#channel] [reason]"""
         channel = channel or ctx.channel
         overwrite = channel.overwrites_for(ctx.guild.default_role)
@@ -297,7 +307,9 @@ class ServerManagement(commands.Cog, name="Server Management"):
     @commands.command(name="unlock", help="Unlock a previously locked channel.")
     @commands.has_permissions(manage_channels=True)
     @commands.bot_has_permissions(manage_channels=True)
-    async def unlock(self, ctx, channel: discord.TextChannel = None, *, reason: str = None):
+    async def unlock(
+        self, ctx, channel: discord.TextChannel = None, *, reason: str = None
+    ):
         """Usage: ,unlock [#channel] [reason]"""
         channel = channel or ctx.channel
         overwrite = channel.overwrites_for(ctx.guild.default_role)
@@ -482,7 +494,11 @@ class ServerManagement(commands.Cog, name="Server Management"):
         details: str,
     ):
         """Usage: ,setsticky [#channel] <message>"""
-        channel = ctx.message.channel_mentions[0] if ctx.message.channel_mentions else ctx.channel
+        channel = (
+            ctx.message.channel_mentions[0]
+            if ctx.message.channel_mentions
+            else ctx.channel
+        )
         content = details
         if ctx.message.channel_mentions:
             mention = ctx.message.channel_mentions[0].mention
@@ -501,7 +517,9 @@ class ServerManagement(commands.Cog, name="Server Management"):
         existing_sticky = await get_sticky_message(channel.id)
         if existing_sticky and existing_sticky.get("bot_message_id"):
             try:
-                old_message = await channel.fetch_message(existing_sticky["bot_message_id"])
+                old_message = await channel.fetch_message(
+                    existing_sticky["bot_message_id"]
+                )
                 await old_message.delete()
             except (discord.NotFound, discord.Forbidden):
                 pass

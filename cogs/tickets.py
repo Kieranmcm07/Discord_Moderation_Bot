@@ -124,7 +124,10 @@ class Tickets(commands.Cog, name="Tickets"):
         return roles
 
     async def _is_ticket_staff(self, member: discord.Member) -> bool:
-        if member.guild_permissions.manage_guild or member.guild_permissions.administrator:
+        if (
+            member.guild_permissions.manage_guild
+            or member.guild_permissions.administrator
+        ):
             return True
 
         role_ids = set(await get_ticket_roles(member.guild.id))
@@ -140,7 +143,9 @@ class Tickets(commands.Cog, name="Tickets"):
             view.add_item(TicketCreateButton(self, category))
         return view
 
-    async def _get_live_ticket_category(self, guild_id: int, category_id: int) -> dict | None:
+    async def _get_live_ticket_category(
+        self, guild_id: int, category_id: int
+    ) -> dict | None:
         """Return the current saved category config for a ticket button click."""
         categories = await get_ticket_categories(guild_id)
         return next((item for item in categories if item["id"] == category_id), None)
@@ -163,7 +168,9 @@ class Tickets(commands.Cog, name="Tickets"):
             lines.append(f"[{created}] {author}: {content}")
 
         payload = "\n".join(lines).encode("utf-8")
-        return discord.File(io.BytesIO(payload), filename=f"{channel.name}-transcript.txt")
+        return discord.File(
+            io.BytesIO(payload), filename=f"{channel.name}-transcript.txt"
+        )
 
     async def _log_ticket_event(
         self,
@@ -196,7 +203,9 @@ class Tickets(commands.Cog, name="Tickets"):
 
         await log_channel.send(embed=embed, file=file)
 
-    async def handle_ticket_create(self, interaction: discord.Interaction, category: dict):
+    async def handle_ticket_create(
+        self, interaction: discord.Interaction, category: dict
+    ):
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
             return await interaction.response.send_message(
                 "Tickets can only be created inside a server.",
@@ -231,9 +240,13 @@ class Tickets(commands.Cog, name="Tickets"):
                         ephemeral=True,
                     )
 
-                existing = await get_open_ticket_for_user(interaction.guild.id, interaction.user.id)
+                existing = await get_open_ticket_for_user(
+                    interaction.guild.id, interaction.user.id
+                )
                 if existing:
-                    existing_channel = interaction.guild.get_channel(existing["channel_id"])
+                    existing_channel = interaction.guild.get_channel(
+                        existing["channel_id"]
+                    )
                     if not existing_channel:
                         await close_ticket(
                             existing["channel_id"],
@@ -242,8 +255,14 @@ class Tickets(commands.Cog, name="Tickets"):
                         existing = None
 
                 if existing:
-                    existing_channel = interaction.guild.get_channel(existing["channel_id"])
-                    mention = existing_channel.mention if existing_channel else f"`{existing['channel_id']}`"
+                    existing_channel = interaction.guild.get_channel(
+                        existing["channel_id"]
+                    )
+                    mention = (
+                        existing_channel.mention
+                        if existing_channel
+                        else f"`{existing['channel_id']}`"
+                    )
                     return await interaction.response.send_message(
                         f"You already have an open ticket: {mention}",
                         ephemeral=True,
@@ -258,7 +277,9 @@ class Tickets(commands.Cog, name="Tickets"):
 
                 staff_roles = await self._get_staff_roles(interaction.guild)
                 overwrites = {
-                    interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                    interaction.guild.default_role: discord.PermissionOverwrite(
+                        view_channel=False
+                    ),
                     me: discord.PermissionOverwrite(
                         view_channel=True,
                         send_messages=True,
@@ -305,13 +326,19 @@ class Tickets(commands.Cog, name="Tickets"):
                     )
                 except aiosqlite.IntegrityError:
                     await channel.delete(reason="Duplicate open ticket prevented")
-                    existing = await get_open_ticket_for_user(interaction.guild.id, interaction.user.id)
+                    existing = await get_open_ticket_for_user(
+                        interaction.guild.id, interaction.user.id
+                    )
                     existing_channel = (
                         interaction.guild.get_channel(existing["channel_id"])
                         if existing
                         else None
                     )
-                    mention = existing_channel.mention if existing_channel else "your existing ticket"
+                    mention = (
+                        existing_channel.mention
+                        if existing_channel
+                        else "your existing ticket"
+                    )
                     return await interaction.response.send_message(
                         f"You already have an open ticket: {mention}",
                         ephemeral=True,
@@ -336,13 +363,21 @@ class Tickets(commands.Cog, name="Tickets"):
                         value=live_category["description"],
                         inline=False,
                     )
-                embed.add_field(name="Opened By", value=interaction.user.mention, inline=True)
+                embed.add_field(
+                    name="Opened By", value=interaction.user.mention, inline=True
+                )
                 embed.add_field(
                     name="Staff Roles",
-                    value=", ".join(role.mention for role in staff_roles) if staff_roles else "None configured",
+                    value=(
+                        ", ".join(role.mention for role in staff_roles)
+                        if staff_roles
+                        else "None configured"
+                    ),
                     inline=True,
                 )
-                embed.set_footer(text="Use the button below or ,closeticket to close this ticket.")
+                embed.set_footer(
+                    text="Use the button below or ,closeticket to close this ticket."
+                )
 
                 view = self._build_close_view()
                 staff_ping = " ".join(role.mention for role in staff_roles)
@@ -367,7 +402,9 @@ class Tickets(commands.Cog, name="Tickets"):
                 self._ticket_creation_locks.pop(lock_key, None)
 
     async def handle_ticket_close(self, interaction: discord.Interaction):
-        if not interaction.guild or not isinstance(interaction.channel, discord.TextChannel):
+        if not interaction.guild or not isinstance(
+            interaction.channel, discord.TextChannel
+        ):
             return await interaction.response.send_message(
                 "This button only works inside ticket channels.",
                 ephemeral=True,
@@ -410,7 +447,9 @@ class Tickets(commands.Cog, name="Tickets"):
 
         await close_ticket(channel.id, closer.id)
         transcript = await self._build_transcript(channel)
-        owner = channel.guild.get_member(ticket["user_id"]) or self.bot.get_user(ticket["user_id"])
+        owner = channel.guild.get_member(ticket["user_id"]) or self.bot.get_user(
+            ticket["user_id"]
+        )
 
         await self._log_ticket_event(
             channel.guild,
@@ -434,7 +473,10 @@ class Tickets(commands.Cog, name="Tickets"):
         await asyncio.sleep(5)
         await channel.delete(reason=f"Ticket closed by {closer}")
 
-    @commands.command(name="setticketcategory", help="Set the category where ticket channels are created.")
+    @commands.command(
+        name="setticketcategory",
+        help="Set the category where ticket channels are created.",
+    )
     @commands.has_permissions(manage_guild=True)
     async def set_ticket_category(self, ctx, category: discord.CategoryChannel):
         await upsert_ticket_settings(ctx.guild.id, category_id=category.id)
@@ -445,7 +487,10 @@ class Tickets(commands.Cog, name="Tickets"):
             )
         )
 
-    @commands.command(name="setticketlog", help="Set the channel used for ticket logs and transcripts.")
+    @commands.command(
+        name="setticketlog",
+        help="Set the channel used for ticket logs and transcripts.",
+    )
     @commands.has_permissions(manage_guild=True)
     async def set_ticket_log(self, ctx, channel: discord.TextChannel):
         await upsert_ticket_settings(ctx.guild.id, log_channel_id=channel.id)
@@ -456,7 +501,9 @@ class Tickets(commands.Cog, name="Tickets"):
             )
         )
 
-    @commands.command(name="ticketroleadd", help="Allow a role to view and manage tickets.")
+    @commands.command(
+        name="ticketroleadd", help="Allow a role to view and manage tickets."
+    )
     @commands.has_permissions(manage_guild=True)
     async def ticket_role_add(self, ctx, role: discord.Role):
         await add_ticket_role(ctx.guild.id, role.id)
@@ -478,11 +525,17 @@ class Tickets(commands.Cog, name="Tickets"):
             )
         )
 
-    @commands.command(name="ticketroles", help="Show which roles currently have ticket access.")
+    @commands.command(
+        name="ticketroles", help="Show which roles currently have ticket access."
+    )
     @commands.has_permissions(manage_guild=True)
     async def ticket_roles(self, ctx):
         roles = await self._get_staff_roles(ctx.guild)
-        description = "\n".join(role.mention for role in roles) if roles else "No ticket roles configured yet."
+        description = (
+            "\n".join(role.mention for role in roles)
+            if roles
+            else "No ticket roles configured yet."
+        )
         await ctx.send(
             embed=discord.Embed(
                 title="Ticket Staff Roles",
@@ -491,7 +544,10 @@ class Tickets(commands.Cog, name="Tickets"):
             )
         )
 
-    @commands.command(name="ticketcategoryadd", help="Add a ticket category button. Use | to split name, emoji, description.")
+    @commands.command(
+        name="ticketcategoryadd",
+        help="Add a ticket category button. Use | to split name, emoji, description.",
+    )
     @commands.has_permissions(manage_guild=True)
     async def ticket_category_add(self, ctx, *, payload: str):
         parts = [part.strip() for part in payload.split("|")]
@@ -517,7 +573,9 @@ class Tickets(commands.Cog, name="Tickets"):
             )
 
         try:
-            category_id = await add_ticket_category(ctx.guild.id, name, emoji, description)
+            category_id = await add_ticket_category(
+                ctx.guild.id, name, emoji, description
+            )
         except aiosqlite.IntegrityError:
             return await ctx.send(
                 embed=discord.Embed(
@@ -534,7 +592,9 @@ class Tickets(commands.Cog, name="Tickets"):
             )
         )
 
-    @commands.command(name="ticketcategoryremove", help="Remove a ticket category by its ID.")
+    @commands.command(
+        name="ticketcategoryremove", help="Remove a ticket category by its ID."
+    )
     @commands.has_permissions(manage_guild=True)
     async def ticket_category_remove(self, ctx, category_id: int):
         await remove_ticket_category(ctx.guild.id, category_id)
@@ -545,7 +605,9 @@ class Tickets(commands.Cog, name="Tickets"):
             )
         )
 
-    @commands.command(name="ticketcategories", help="List the configured ticket categories.")
+    @commands.command(
+        name="ticketcategories", help="List the configured ticket categories."
+    )
     @commands.has_permissions(manage_guild=True)
     async def ticket_categories(self, ctx):
         categories = await get_ticket_categories(ctx.guild.id)
@@ -568,7 +630,9 @@ class Tickets(commands.Cog, name="Tickets"):
             )
         await ctx.send(embed=embed)
 
-    @commands.command(name="ticketpanel", help="Post the ticket panel with category buttons.")
+    @commands.command(
+        name="ticketpanel", help="Post the ticket panel with category buttons."
+    )
     @commands.has_permissions(manage_guild=True)
     async def ticket_panel(self, ctx, channel: discord.TextChannel = None):
         channel = channel or ctx.channel
@@ -613,7 +677,9 @@ class Tickets(commands.Cog, name="Tickets"):
                 )
             )
 
-    @commands.command(name="ticketsettings", help="Show the current ticket system setup.")
+    @commands.command(
+        name="ticketsettings", help="Show the current ticket system setup."
+    )
     @commands.has_permissions(manage_guild=True)
     async def ticket_settings(self, ctx):
         settings = await get_ticket_settings(ctx.guild.id) or {}
@@ -647,12 +713,18 @@ class Tickets(commands.Cog, name="Tickets"):
         )
         embed.add_field(
             name="Ticket Categories",
-            value="\n".join(f"`{cat['id']}` {cat['name']}" for cat in categories) if categories else "None",
+            value=(
+                "\n".join(f"`{cat['id']}` {cat['name']}" for cat in categories)
+                if categories
+                else "None"
+            ),
             inline=False,
         )
         await ctx.send(embed=embed)
 
-    @commands.command(name="ticketadd", help="Give another user access to the current ticket.")
+    @commands.command(
+        name="ticketadd", help="Give another user access to the current ticket."
+    )
     async def ticket_add(self, ctx, member: discord.Member):
         ticket = await get_ticket_by_channel(ctx.channel.id)
         if not ticket or ticket["status"] != "open":
@@ -687,7 +759,9 @@ class Tickets(commands.Cog, name="Tickets"):
             )
         )
 
-    @commands.command(name="ticketremove", help="Remove a user's access from the current ticket.")
+    @commands.command(
+        name="ticketremove", help="Remove a user's access from the current ticket."
+    )
     async def ticket_remove(self, ctx, member: discord.Member):
         ticket = await get_ticket_by_channel(ctx.channel.id)
         if not ticket or ticket["status"] != "open":
@@ -714,7 +788,9 @@ class Tickets(commands.Cog, name="Tickets"):
                 )
             )
 
-        await ctx.channel.set_permissions(member, overwrite=None, reason=f"Removed from ticket by {ctx.author}")
+        await ctx.channel.set_permissions(
+            member, overwrite=None, reason=f"Removed from ticket by {ctx.author}"
+        )
         await ctx.send(
             embed=discord.Embed(
                 description=f"✅ Removed {member.mention} from this ticket.",

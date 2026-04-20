@@ -29,7 +29,9 @@ class Fun(commands.Cog, name="Fun"):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command(name="8ball", aliases=["eightball"], help="Ask the magic 8-ball a question.")
+    @commands.command(
+        name="8ball", aliases=["eightball"], help="Ask the magic 8-ball a question."
+    )
     async def eightball(self, ctx, *, question: str):
         embed = await make_embed(
             self.bot,

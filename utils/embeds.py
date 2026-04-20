@@ -37,7 +37,9 @@ async def get_embed_image(guild: discord.Guild | None) -> str | None:
     return image_url or None
 
 
-async def decorate_embed(bot, guild: discord.Guild | None, embed: discord.Embed) -> discord.Embed:
+async def decorate_embed(
+    bot, guild: discord.Guild | None, embed: discord.Embed
+) -> discord.Embed:
     """
     Apply the shared bot branding to an existing embed.
 

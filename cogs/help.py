@@ -62,7 +62,11 @@ class Help(commands.Cog, name="Help"):
         )
         embed.set_author(
             name=ctx.guild.name,
-            icon_url=ctx.guild.icon.url if ctx.guild.icon else self.bot.user.display_avatar.url,
+            icon_url=(
+                ctx.guild.icon.url
+                if ctx.guild.icon
+                else self.bot.user.display_avatar.url
+            ),
         )
 
         for cog_name, cog in self.bot.cogs.items():
@@ -70,14 +74,18 @@ class Help(commands.Cog, name="Help"):
             if not cog_commands:
                 continue
 
-            command_list = ", ".join(f"`{PREFIX}{command.name}`" for command in cog_commands)
+            command_list = ", ".join(
+                f"`{PREFIX}{command.name}`" for command in cog_commands
+            )
             embed.add_field(
                 name=f"{cog_name} ({len(cog_commands)})",
                 value=command_list,
                 inline=False,
             )
 
-        embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url)
+        embed.set_footer(
+            text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url
+        )
         await ctx.send(embed=embed)
 
 

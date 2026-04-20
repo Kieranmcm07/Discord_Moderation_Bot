@@ -26,14 +26,14 @@ SUCCESS_BANNER = r"""
 ╚═════╝  ╚═════╝    ╚═╝        ╚═════╝ ╚═╝  ╚═══╝╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝
 """
 
-FAIL_BANNER = r'''
+FAIL_BANNER = r"""
 ██████╗  ██████╗ ████████╗    ███████╗ █████╗ ██╗██╗     ███████╗██████╗ 
 ██╔══██╗██╔═══██╗╚══██╔══╝    ██╔════╝██╔══██╗██║██║     ██╔════╝██╔══██╗
 ██████╔╝██║   ██║   ██║       █████╗  ███████║██║██║     █████╗  ██║  ██║
 ██╔══██╗██║   ██║   ██║       ██╔══╝  ██╔══██║██║██║     ██╔══╝  ██║  ██║
 ██████╔╝╚██████╔╝   ██║       ██║     ██║  ██║██║███████╗███████╗██████╔╝
 ╚═════╝  ╚═════╝    ╚═╝       ╚═╝     ╚═╝  ╚═╝╚═╝╚══════╝╚══════╝╚═════╝                                                                          
-'''
+"""
 
 
 def enable_ansi():
@@ -114,9 +114,7 @@ def main():
 
         if process.poll() is not None:
             status = read_status(status_file) or {}
-            message = status.get(
-                "message", "Bot process exited before it came online."
-            )
+            message = status.get("message", "Bot process exited before it came online.")
             show_banner(FAIL_BANNER, "91", f"Startup Failed: {message}")
             input("\nPress Enter to Close this Window...")
             return 1

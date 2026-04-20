@@ -11,7 +11,12 @@ import discord
 from discord.ext import commands
 
 from config import COLOR_INFO, COLOR_SUCCESS
-from utils.db import add_voice_time, get_top_chatters, get_top_voice, increment_message_stat
+from utils.db import (
+    add_voice_time,
+    get_top_chatters,
+    get_top_voice,
+    increment_message_stat,
+)
 from utils.embeds import make_embed
 
 
@@ -57,7 +62,11 @@ class Activity(commands.Cog, name="Activity"):
                     await add_voice_time(member.guild.id, member.id, minutes)
             return
 
-        if before.channel is not None and after.channel is not None and before.channel != after.channel:
+        if (
+            before.channel is not None
+            and after.channel is not None
+            and before.channel != after.channel
+        ):
             join_time = voice_join_times.get(key)
             if join_time:
                 minutes = int((datetime.utcnow() - join_time).total_seconds() / 60)
@@ -65,7 +74,11 @@ class Activity(commands.Cog, name="Activity"):
                     await add_voice_time(member.guild.id, member.id, minutes)
             voice_join_times[key] = datetime.utcnow()
 
-    @commands.command(name="topchat", aliases=["chatleaderboard", "toplb"], help="Show the top chatters in the server.")
+    @commands.command(
+        name="topchat",
+        aliases=["chatleaderboard", "toplb"],
+        help="Show the top chatters in the server.",
+    )
     async def top_chat(self, ctx, limit: int = 10):
         """Usage: ,topchat [limit]"""
         limit = min(max(limit, 1), 25)
@@ -99,7 +112,11 @@ class Activity(commands.Cog, name="Activity"):
         embed.description = "\n".join(lines)
         await ctx.send(embed=embed)
 
-    @commands.command(name="topvoice", aliases=["voiceleaderboard", "toplv"], help="Show who has spent the most time in voice chat.")
+    @commands.command(
+        name="topvoice",
+        aliases=["voiceleaderboard", "toplv"],
+        help="Show who has spent the most time in voice chat.",
+    )
     async def top_voice(self, ctx, limit: int = 10):
         """Usage: ,topvoice [limit]"""
         limit = min(max(limit, 1), 25)
@@ -136,18 +153,38 @@ class Activity(commands.Cog, name="Activity"):
         embed.description = "\n".join(lines)
         await ctx.send(embed=embed)
 
-    @commands.command(name="stats", aliases=["userstats"], help="Show a member's activity stats.")
+    @commands.command(
+        name="stats", aliases=["userstats"], help="Show a member's activity stats."
+    )
     async def user_stats(self, ctx, member: discord.Member = None):
         """Usage: ,stats [@user]"""
         member = member or ctx.author
 
         all_chat = await get_top_chatters(ctx.guild.id, 999)
-        chat_rank = next((index + 1 for index, row in enumerate(all_chat) if row["user_id"] == member.id), None)
-        chat_count = next((row["total"] for row in all_chat if row["user_id"] == member.id), 0)
+        chat_rank = next(
+            (
+                index + 1
+                for index, row in enumerate(all_chat)
+                if row["user_id"] == member.id
+            ),
+            None,
+        )
+        chat_count = next(
+            (row["total"] for row in all_chat if row["user_id"] == member.id), 0
+        )
 
         all_voice = await get_top_voice(ctx.guild.id, 999)
-        voice_rank = next((index + 1 for index, row in enumerate(all_voice) if row["user_id"] == member.id), None)
-        voice_minutes = next((row["minutes"] for row in all_voice if row["user_id"] == member.id), 0)
+        voice_rank = next(
+            (
+                index + 1
+                for index, row in enumerate(all_voice)
+                if row["user_id"] == member.id
+            ),
+            None,
+        )
+        voice_minutes = next(
+            (row["minutes"] for row in all_voice if row["user_id"] == member.id), 0
+        )
         voice_hours = voice_minutes // 60
         voice_remainder = voice_minutes % 60
 
@@ -170,7 +207,11 @@ class Activity(commands.Cog, name="Activity"):
         )
         embed.add_field(
             name="Joined Server",
-            value=f"<t:{int(member.joined_at.timestamp())}:D>" if member.joined_at else "Unknown",
+            value=(
+                f"<t:{int(member.joined_at.timestamp())}:D>"
+                if member.joined_at
+                else "Unknown"
+            ),
             inline=True,
         )
         await ctx.send(embed=embed)

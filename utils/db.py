@@ -12,14 +12,18 @@ import aiosqlite
 from config import DB_PATH
 
 
-async def ensure_column(db: aiosqlite.Connection, table_name: str, column_name: str, definition: str):
+async def ensure_column(
+    db: aiosqlite.Connection, table_name: str, column_name: str, definition: str
+):
     """Add a missing column to an existing table without breaking older installs."""
     async with db.execute(f"PRAGMA table_info({table_name})") as cursor:
         rows = await cursor.fetchall()
 
     existing_columns = {row[1] for row in rows}
     if column_name not in existing_columns:
-        await db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+        await db.execute(
+            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"
+        )
 
 
 async def init_db():
@@ -236,7 +240,9 @@ async def init_db():
         await db.commit()
 
 
-async def add_case(guild_id, user_id, mod_id, action, reason=None, duration=None) -> int:
+async def add_case(
+    guild_id, user_id, mod_id, action, reason=None, duration=None
+) -> int:
     """Insert a new case and return its generated case ID."""
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
@@ -338,7 +344,9 @@ async def clear_recent_warns(guild_id, user_id, amount: int) -> list[int]:
         return case_ids
 
 
-async def upsert_escalation_rule(guild_id, warn_count: int, action: str, duration: str | None = None):
+async def upsert_escalation_rule(
+    guild_id, warn_count: int, action: str, duration: str | None = None
+):
     """Create or update an escalation rule for a warning threshold."""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
@@ -388,7 +396,9 @@ async def get_matching_escalation_rule(guild_id, warn_count: int) -> dict | None
             return dict(row) if row else None
 
 
-async def add_temp_ban(guild_id, user_id, mod_id, expires_at: str, reason: str | None = None):
+async def add_temp_ban(
+    guild_id, user_id, mod_id, expires_at: str, reason: str | None = None
+):
     """Store or refresh a temporary ban entry."""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
@@ -471,7 +481,9 @@ async def get_invites(guild_id) -> list[dict]:
     """Return all stored invite snapshots for one guild."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM invites WHERE guild_id=?", (guild_id,)) as cursor:
+        async with db.execute(
+            "SELECT * FROM invites WHERE guild_id=?", (guild_id,)
+        ) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
@@ -598,7 +610,9 @@ async def set_sticky_message(guild_id, channel_id, content: str, created_by_id: 
 async def clear_sticky_message(channel_id):
     """Remove a sticky message definition from a channel."""
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("DELETE FROM sticky_messages WHERE channel_id=?", (channel_id,))
+        await db.execute(
+            "DELETE FROM sticky_messages WHERE channel_id=?", (channel_id,)
+        )
         await db.commit()
 
 
@@ -674,13 +688,19 @@ async def upsert_guild_settings(
     current = await get_guild_settings(guild_id) or {}
     values = {
         "welcome_channel_id": (
-            welcome_channel_id if welcome_channel_id is not None else current.get("welcome_channel_id")
+            welcome_channel_id
+            if welcome_channel_id is not None
+            else current.get("welcome_channel_id")
         ),
         "leave_channel_id": (
-            leave_channel_id if leave_channel_id is not None else current.get("leave_channel_id")
+            leave_channel_id
+            if leave_channel_id is not None
+            else current.get("leave_channel_id")
         ),
         "welcome_message": (
-            welcome_message if welcome_message is not None else current.get("welcome_message")
+            welcome_message
+            if welcome_message is not None
+            else current.get("welcome_message")
         ),
         "leave_message": (
             leave_message if leave_message is not None else current.get("leave_message")
@@ -689,10 +709,14 @@ async def upsert_guild_settings(
             embed_color if embed_color is not None else current.get("embed_color")
         ),
         "embed_image_url": (
-            embed_image_url if embed_image_url is not None else current.get("embed_image_url")
+            embed_image_url
+            if embed_image_url is not None
+            else current.get("embed_image_url")
         ),
         "mod_log_channel_id": (
-            mod_log_channel_id if mod_log_channel_id is not None else current.get("mod_log_channel_id")
+            mod_log_channel_id
+            if mod_log_channel_id is not None
+            else current.get("mod_log_channel_id")
         ),
     }
 
@@ -768,13 +792,25 @@ async def get_ticket_settings(guild_id) -> dict | None:
             return dict(row) if row else None
 
 
-async def upsert_ticket_settings(guild_id, category_id=None, log_channel_id=None, panel_channel_id=None):
+async def upsert_ticket_settings(
+    guild_id, category_id=None, log_channel_id=None, panel_channel_id=None
+):
     """Create or update ticket settings without resetting untouched values."""
     current = await get_ticket_settings(guild_id) or {}
     values = {
-        "category_id": category_id if category_id is not None else current.get("category_id"),
-        "log_channel_id": log_channel_id if log_channel_id is not None else current.get("log_channel_id"),
-        "panel_channel_id": panel_channel_id if panel_channel_id is not None else current.get("panel_channel_id"),
+        "category_id": (
+            category_id if category_id is not None else current.get("category_id")
+        ),
+        "log_channel_id": (
+            log_channel_id
+            if log_channel_id is not None
+            else current.get("log_channel_id")
+        ),
+        "panel_channel_id": (
+            panel_channel_id
+            if panel_channel_id is not None
+            else current.get("panel_channel_id")
+        ),
     }
 
     async with aiosqlite.connect(DB_PATH) as db:
@@ -828,7 +864,9 @@ async def get_ticket_roles(guild_id) -> list[int]:
             return [row[0] for row in rows]
 
 
-async def add_ticket_category(guild_id, name: str, emoji: str | None = None, description: str | None = None):
+async def add_ticket_category(
+    guild_id, name: str, emoji: str | None = None, description: str | None = None
+):
     """Create a selectable ticket category entry."""
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(

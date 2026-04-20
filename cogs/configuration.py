@@ -105,12 +105,14 @@ class Configuration(commands.Cog, name="Configuration"):
 
         welcome_channel = (
             ctx.guild.get_channel(settings["welcome_channel_id"]).mention
-            if settings.get("welcome_channel_id") and ctx.guild.get_channel(settings["welcome_channel_id"])
+            if settings.get("welcome_channel_id")
+            and ctx.guild.get_channel(settings["welcome_channel_id"])
             else "Not set"
         )
         leave_channel = (
             ctx.guild.get_channel(settings["leave_channel_id"]).mention
-            if settings.get("leave_channel_id") and ctx.guild.get_channel(settings["leave_channel_id"])
+            if settings.get("leave_channel_id")
+            and ctx.guild.get_channel(settings["leave_channel_id"])
             else "Not set"
         )
         autorole = (
@@ -119,11 +121,14 @@ class Configuration(commands.Cog, name="Configuration"):
             else "Not set"
         )
         embed_color = settings.get("embed_color")
-        embed_color_value = f"`#{embed_color:06X}`" if embed_color is not None else "Default"
+        embed_color_value = (
+            f"`#{embed_color:06X}`" if embed_color is not None else "Default"
+        )
         embed_image_value = settings.get("embed_image_url") or "Not set"
         mod_log_channel = (
             ctx.guild.get_channel(settings["mod_log_channel_id"]).mention
-            if settings.get("mod_log_channel_id") and ctx.guild.get_channel(settings["mod_log_channel_id"])
+            if settings.get("mod_log_channel_id")
+            and ctx.guild.get_channel(settings["mod_log_channel_id"])
             else "Not set"
         )
 
@@ -142,8 +147,12 @@ class Configuration(commands.Cog, name="Configuration"):
         embed.add_field(name="Embed Image", value=embed_image_value, inline=False)
         embed.add_field(name="Mod Log Channel", value=mod_log_channel, inline=False)
         embed.add_field(name="Sticky Messages", value=str(len(stickies)), inline=True)
-        embed.add_field(name="Escalation Rules", value=str(len(escalations)), inline=True)
-        embed.add_field(name="Reaction Roles", value=str(len(reaction_roles)), inline=True)
+        embed.add_field(
+            name="Escalation Rules", value=str(len(escalations)), inline=True
+        )
+        embed.add_field(
+            name="Reaction Roles", value=str(len(reaction_roles)), inline=True
+        )
         embed.add_field(
             name="Ticket Setup",
             value="Configured" if ticket_settings.get("category_id") else "Not set",
@@ -151,7 +160,9 @@ class Configuration(commands.Cog, name="Configuration"):
         )
         await ctx.send(embed=embed)
 
-    @commands.command(name="setwelcomechannel", help="Set the channel for welcome messages.")
+    @commands.command(
+        name="setwelcomechannel", help="Set the channel for welcome messages."
+    )
     @commands.has_permissions(manage_guild=True)
     async def setwelcomechannel(self, ctx, channel: discord.TextChannel):
         await upsert_guild_settings(ctx.guild.id, welcome_channel_id=channel.id)
@@ -163,7 +174,9 @@ class Configuration(commands.Cog, name="Configuration"):
         )
         await ctx.send(embed=embed)
 
-    @commands.command(name="setwelcomemessage", help="Set the welcome message template.")
+    @commands.command(
+        name="setwelcomemessage", help="Set the welcome message template."
+    )
     @commands.has_permissions(manage_guild=True)
     async def setwelcomemessage(self, ctx, *, message: str):
         await upsert_guild_settings(ctx.guild.id, welcome_message=message)
@@ -179,7 +192,9 @@ class Configuration(commands.Cog, name="Configuration"):
         )
         await ctx.send(embed=embed)
 
-    @commands.command(name="setleavechannel", help="Set the channel for leave messages.")
+    @commands.command(
+        name="setleavechannel", help="Set the channel for leave messages."
+    )
     @commands.has_permissions(manage_guild=True)
     async def setleavechannel(self, ctx, channel: discord.TextChannel):
         await upsert_guild_settings(ctx.guild.id, leave_channel_id=channel.id)

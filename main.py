@@ -203,7 +203,9 @@ class MyBot(commands.Bot):
             )
             return
 
-        log.error("Unhandled error in command %s: %s", ctx.command, error, exc_info=error)
+        log.error(
+            "Unhandled error in command %s: %s", ctx.command, error, exc_info=error
+        )
         await ctx.send(
             embed=await make_embed(
                 self,

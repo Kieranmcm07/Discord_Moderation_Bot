@@ -133,12 +133,16 @@ class Music(commands.Cog, name="Music"):
         )
 
         if info is None:
-            raise commands.CommandError("I couldn't find anything playable for that input.")
+            raise commands.CommandError(
+                "I couldn't find anything playable for that input."
+            )
 
         if "entries" in info:
             entries = [entry for entry in info["entries"] if entry]
             if not entries:
-                raise commands.CommandError("I couldn't find anything playable for that input.")
+                raise commands.CommandError(
+                    "I couldn't find anything playable for that input."
+                )
             info = entries[0]
 
         stream_url = info.get("url")
@@ -274,7 +278,9 @@ class Music(commands.Cog, name="Music"):
 
         queued = list(state.queue._queue)[:10]
         for index, track in enumerate(queued, start=1):
-            lines.append(f"{index}. [{track.title}]({track.webpage_url}) ({track.duration_text})")
+            lines.append(
+                f"{index}. [{track.title}]({track.webpage_url}) ({track.duration_text})"
+            )
 
         if not lines:
             return await ctx.send(
@@ -411,7 +417,9 @@ class Music(commands.Cog, name="Music"):
             )
         )
 
-    @commands.command(name="leave", aliases=["disconnect"], help="Leave the current voice channel.")
+    @commands.command(
+        name="leave", aliases=["disconnect"], help="Leave the current voice channel."
+    )
     async def leave(self, ctx):
         """Usage: ,leave"""
         voice = ctx.guild.voice_client
@@ -496,7 +504,9 @@ class Music(commands.Cog, name="Music"):
                 )
 
         if state.loop_enabled and state.now_playing is None:
-            description = "Loop is enabled. It will repeat the next track that starts playing."
+            description = (
+                "Loop is enabled. It will repeat the next track that starts playing."
+            )
         elif state.loop_enabled:
             description = f"Loop enabled for [{state.now_playing.title}]({state.now_playing.webpage_url})."
         else:

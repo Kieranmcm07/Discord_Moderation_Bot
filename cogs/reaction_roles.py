@@ -20,7 +20,14 @@ from utils.embeds import make_embed
 class ReactionRoleButton(discord.ui.Button):
     """Persistent button that toggles one configured role."""
 
-    def __init__(self, cog: "ReactionRoles", guild_id: int, role_id: int, label: str, emoji: str | None):
+    def __init__(
+        self,
+        cog: "ReactionRoles",
+        guild_id: int,
+        role_id: int,
+        label: str,
+        emoji: str | None,
+    ):
         super().__init__(
             label=label[:80],
             emoji=emoji or None,
@@ -217,7 +224,9 @@ class ReactionRoles(commands.Cog, name="Reaction Roles"):
             )
         await ctx.send(embed=embed)
 
-    @commands.command(name="rrpanel", help="Post a self-assignable role panel with buttons.")
+    @commands.command(
+        name="rrpanel", help="Post a self-assignable role panel with buttons."
+    )
     @commands.has_permissions(manage_roles=True)
     async def rrpanel(self, ctx, channel: discord.TextChannel = None):
         channel = channel or ctx.channel

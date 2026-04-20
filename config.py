@@ -17,7 +17,9 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 PREFIX = os.getenv("PREFIX", ",")
 OWNER_IDS = [
-    int(value) for value in os.getenv("OWNER_IDS", "").split(",") if value.strip().isdigit()
+    int(value)
+    for value in os.getenv("OWNER_IDS", "").split(",")
+    if value.strip().isdigit()
 ]
 
 # Database path.

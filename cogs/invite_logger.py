@@ -8,7 +8,13 @@ an account looks brand new or more established.
 import discord
 from discord.ext import commands
 
-from config import COLOR_ERROR, COLOR_INFO, COLOR_SUCCESS, INVITE_LOG_CHANNEL_ID, JOIN_LOG_CHANNEL_ID
+from config import (
+    COLOR_ERROR,
+    COLOR_INFO,
+    COLOR_SUCCESS,
+    INVITE_LOG_CHANNEL_ID,
+    JOIN_LOG_CHANNEL_ID,
+)
 from utils.db import log_member_event, upsert_invite
 from utils.embeds import make_embed
 
@@ -30,7 +36,9 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
         """Store the current invite usage counts so later joins can be compared."""
         try:
             invites = await guild.invites()
-            self.invite_cache[guild.id] = {invite.code: invite.uses for invite in invites}
+            self.invite_cache[guild.id] = {
+                invite.code: invite.uses for invite in invites
+            }
             for invite in invites:
                 await upsert_invite(
                     guild.id,
@@ -61,7 +69,9 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
                 used_invite = invite
                 break
 
-        self.invite_cache[guild.id] = {invite.code: invite.uses for invite in current_invites}
+        self.invite_cache[guild.id] = {
+            invite.code: invite.uses for invite in current_invites
+        }
 
         embed = await make_embed(
             self.bot,
@@ -78,7 +88,11 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
         )
         embed.add_field(
             name="Account Age Check",
-            value="New account" if (discord.utils.utcnow() - member.created_at).days < 7 else "Established account",
+            value=(
+                "New account"
+                if (discord.utils.utcnow() - member.created_at).days < 7
+                else "Established account"
+            ),
             inline=True,
         )
 
@@ -96,7 +110,9 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
                 used_invite.uses,
             )
         else:
-            embed.add_field(name="Joined via Invite", value="Could not determine", inline=False)
+            embed.add_field(
+                name="Joined via Invite", value="Could not determine", inline=False
+            )
 
         embed.add_field(name="Member Count", value=str(guild.member_count), inline=True)
 
@@ -133,7 +149,11 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
         embed.add_field(name="User", value=f"{member} (`{member.id}`)", inline=False)
         embed.add_field(
             name="Joined",
-            value=f"<t:{int(member.joined_at.timestamp())}:R>" if member.joined_at else "Unknown",
+            value=(
+                f"<t:{int(member.joined_at.timestamp())}:R>"
+                if member.joined_at
+                else "Unknown"
+            ),
             inline=True,
         )
         embed.add_field(name="Member Count", value=str(guild.member_count), inline=True)
