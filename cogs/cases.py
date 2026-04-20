@@ -11,7 +11,14 @@ import discord
 from discord.ext import commands
 
 from config import COLOR_ERROR, COLOR_INFO, COLOR_MOD
-from utils.db import add_case, get_case, get_recent_cases, get_user_cases
+from utils.db import (
+    add_case,
+    get_active_temp_ban,
+    get_case,
+    get_recent_cases,
+    get_user_cases,
+    get_warn_count,
+)
 from utils.embeds import make_embed
 
 
@@ -129,6 +136,61 @@ class Cases(commands.Cog, name="Cases"):
 
         if len(data) > 15:
             embed.set_footer(text=f"Showing 15 of {len(data)} cases")
+
+        await ctx.send(embed=embed)
+
+    @commands.command(
+        name="modsummary",
+        aliases=["summary", "usersummary"],
+        help="Show a quick moderation summary for a user.",
+    )
+    @commands.has_permissions(kick_members=True)
+    async def modsummary(self, ctx, target: discord.Member | discord.User):
+        """Usage: ,modsummary @user"""
+        cases = await get_user_cases(ctx.guild.id, target.id)
+        warn_count = await get_warn_count(ctx.guild.id, target.id)
+        active_tempban = await get_active_temp_ban(ctx.guild.id, target.id)
+
+        embed = await make_embed(
+            self.bot,
+            guild=ctx.guild,
+            title=f"Moderation Summary - {target}",
+            description="Quick snapshot of the member's moderation history.",
+            color=COLOR_MOD,
+        )
+        embed.set_thumbnail(url=target.display_avatar.url)
+        embed.add_field(name="Total Cases", value=str(len(cases)), inline=True)
+        embed.add_field(name="Active Warnings", value=str(warn_count), inline=True)
+        embed.add_field(
+            name="Temp Ban",
+            value=(
+                f"Active until <t:{int(datetime.fromisoformat(active_tempban['expires_at']).timestamp())}:F>"
+                if active_tempban
+                else "Not active"
+            ),
+            inline=False,
+        )
+
+        if cases:
+            lines = []
+            for case in cases[:5]:
+                reason = format_case_reason(case)
+                if len(reason) > 60:
+                    reason = f"{reason[:57]}..."
+                lines.append(
+                    f"`#{case['id']}` {get_action_label(case['action'])} - {reason}"
+                )
+            embed.add_field(
+                name="Recent Cases",
+                value="\n".join(lines),
+                inline=False,
+            )
+        else:
+            embed.add_field(
+                name="Recent Cases",
+                value="No recorded moderation actions for this member.",
+                inline=False,
+            )
 
         await ctx.send(embed=embed)
 

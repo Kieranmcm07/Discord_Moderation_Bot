@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Core startup settings.
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TOKEN_HERE")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 PREFIX = os.getenv("PREFIX", ",")
 OWNER_IDS = [
     int(value) for value in os.getenv("OWNER_IDS", "").split(",") if value.strip().isdigit()
@@ -23,8 +23,7 @@ OWNER_IDS = [
 # Database path.
 DB_PATH = os.getenv("DB_PATH", "data/bot.db")
 
-# Optional logging channels.
-MOD_LOG_CHANNEL_ID = int(os.getenv("MOD_LOG_CHANNEL_ID", 0))
+# Optional logging channels kept for backwards compatibility with older configs.
 INVITE_LOG_CHANNEL_ID = int(os.getenv("INVITE_LOG_CHANNEL_ID", 0))
 JOIN_LOG_CHANNEL_ID = int(os.getenv("JOIN_LOG_CHANNEL_ID", 0))
 

@@ -2,6 +2,7 @@
 cogs/server_management.py - utility commands for managing the server itself.
 """
 
+import asyncio
 from datetime import datetime
 
 import discord
@@ -14,7 +15,6 @@ from utils.db import (
     get_all_sticky_messages,
     get_autorole,
     get_sticky_message,
-    init_db,
     set_autorole,
     set_sticky_message,
     update_sticky_message_id,
@@ -29,6 +29,51 @@ class ServerManagement(commands.Cog, name="Server Management"):
 
     def __init__(self, bot):
         self.bot = bot
+        self._sticky_refresh_tasks: dict[int, asyncio.Task] = {}
+
+    def cog_unload(self):
+        for task in self._sticky_refresh_tasks.values():
+            task.cancel()
+        self._sticky_refresh_tasks.clear()
+
+    def _schedule_sticky_refresh(self, channel: discord.TextChannel):
+        existing_task = self._sticky_refresh_tasks.get(channel.id)
+        if existing_task:
+            existing_task.cancel()
+
+        self._sticky_refresh_tasks[channel.id] = asyncio.create_task(
+            self._refresh_sticky_message(channel)
+        )
+
+    async def _refresh_sticky_message(self, channel: discord.TextChannel):
+        try:
+            await asyncio.sleep(5)
+            sticky = await get_sticky_message(channel.id)
+            if not sticky:
+                return
+
+            previous_message_id = sticky.get("bot_message_id")
+            if previous_message_id:
+                try:
+                    previous_message = await channel.fetch_message(previous_message_id)
+                    await previous_message.delete()
+                except (discord.NotFound, discord.Forbidden):
+                    pass
+
+            sticky_embed = discord.Embed(
+                description=sticky["content"],
+                color=COLOR_INFO,
+                timestamp=datetime.utcnow(),
+            )
+            sticky_embed.set_footer(text="Sticky message")
+            sticky_message = await channel.send(embed=sticky_embed)
+            await update_sticky_message_id(channel.id, sticky_message.id)
+        except asyncio.CancelledError:
+            return
+        finally:
+            current_task = self._sticky_refresh_tasks.get(channel.id)
+            if current_task is asyncio.current_task():
+                self._sticky_refresh_tasks.pop(channel.id, None)
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
@@ -55,22 +100,8 @@ class ServerManagement(commands.Cog, name="Server Management"):
         if not sticky:
             return
 
-        previous_message_id = sticky.get("bot_message_id")
-        if previous_message_id:
-            try:
-                previous_message = await message.channel.fetch_message(previous_message_id)
-                await previous_message.delete()
-            except (discord.NotFound, discord.Forbidden):
-                pass
-
-        sticky_embed = discord.Embed(
-            description=sticky["content"],
-            color=COLOR_INFO,
-            timestamp=datetime.utcnow(),
-        )
-        sticky_embed.set_footer(text="Sticky message")
-        sticky_message = await message.channel.send(embed=sticky_embed)
-        await update_sticky_message_id(message.channel.id, sticky_message.id)
+        if isinstance(message.channel, discord.TextChannel):
+            self._schedule_sticky_refresh(message.channel)
 
     @commands.command(
         name="serverinfo",
@@ -467,6 +498,18 @@ class ServerManagement(commands.Cog, name="Server Management"):
                 )
             )
 
+        existing_sticky = await get_sticky_message(channel.id)
+        if existing_sticky and existing_sticky.get("bot_message_id"):
+            try:
+                old_message = await channel.fetch_message(existing_sticky["bot_message_id"])
+                await old_message.delete()
+            except (discord.NotFound, discord.Forbidden):
+                pass
+
+        existing_task = self._sticky_refresh_tasks.get(channel.id)
+        if existing_task:
+            existing_task.cancel()
+
         await set_sticky_message(ctx.guild.id, channel.id, content, ctx.author.id)
         sticky_embed = discord.Embed(
             description=content,
@@ -552,6 +595,10 @@ class ServerManagement(commands.Cog, name="Server Management"):
                     color=COLOR_INFO,
                 )
             )
+
+        existing_task = self._sticky_refresh_tasks.get(channel.id)
+        if existing_task:
+            existing_task.cancel()
 
         if sticky.get("bot_message_id"):
             try:
@@ -682,5 +729,4 @@ class ServerManagement(commands.Cog, name="Server Management"):
 
 
 async def setup(bot):
-    await init_db()
     await bot.add_cog(ServerManagement(bot))

@@ -13,7 +13,7 @@ import discord
 from discord.ext import commands
 
 from config import COLOR_ERROR, COLOR_INFO, COLOR_SUCCESS
-from utils.db import add_reaction_role, get_reaction_roles, init_db, remove_reaction_role
+from utils.db import add_reaction_role, get_reaction_roles, remove_reaction_role
 from utils.embeds import make_embed
 
 
@@ -268,5 +268,4 @@ class ReactionRoles(commands.Cog, name="Reaction Roles"):
 
 
 async def setup(bot):
-    await init_db()
     await bot.add_cog(ReactionRoles(bot))

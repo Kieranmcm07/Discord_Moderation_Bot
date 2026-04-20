@@ -16,6 +16,7 @@ import discord
 from discord.ext import commands
 
 from config import BOT_TOKEN, OWNER_IDS, PREFIX
+from utils.db import init_db
 from utils.embeds import decorate_embed, make_embed
 
 
@@ -216,6 +217,12 @@ class MyBot(commands.Bot):
 
 async def main():
     """Create the bot instance and connect to Discord."""
+    if not BOT_TOKEN or BOT_TOKEN == "YOUR_TOKEN_HERE":
+        raise RuntimeError(
+            "BOT_TOKEN is missing. Add your real bot token to the .env file before starting the bot."
+        )
+
+    await init_db()
     bot = MyBot()
     async with bot:
         await bot.start(BOT_TOKEN)

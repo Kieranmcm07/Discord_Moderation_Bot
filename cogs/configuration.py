@@ -16,7 +16,7 @@ from utils.db import (
     get_guild_settings,
     get_reaction_roles,
     get_ticket_settings,
-    init_db,
+    clear_mod_log_channel,
     remove_embed_image,
     upsert_guild_settings,
 )
@@ -121,6 +121,11 @@ class Configuration(commands.Cog, name="Configuration"):
         embed_color = settings.get("embed_color")
         embed_color_value = f"`#{embed_color:06X}`" if embed_color is not None else "Default"
         embed_image_value = settings.get("embed_image_url") or "Not set"
+        mod_log_channel = (
+            ctx.guild.get_channel(settings["mod_log_channel_id"]).mention
+            if settings.get("mod_log_channel_id") and ctx.guild.get_channel(settings["mod_log_channel_id"])
+            else "Not set"
+        )
 
         embed.add_field(
             name="Welcome",
@@ -135,6 +140,7 @@ class Configuration(commands.Cog, name="Configuration"):
         embed.add_field(name="Autorole", value=autorole, inline=True)
         embed.add_field(name="Embed Color", value=embed_color_value, inline=True)
         embed.add_field(name="Embed Image", value=embed_image_value, inline=False)
+        embed.add_field(name="Mod Log Channel", value=mod_log_channel, inline=False)
         embed.add_field(name="Sticky Messages", value=str(len(stickies)), inline=True)
         embed.add_field(name="Escalation Rules", value=str(len(escalations)), inline=True)
         embed.add_field(name="Reaction Roles", value=str(len(reaction_roles)), inline=True)
@@ -241,6 +247,70 @@ class Configuration(commands.Cog, name="Configuration"):
         await ctx.send(embed=embed)
 
     @commands.command(
+        name="setmodlog",
+        aliases=["modlogchannel"],
+        help="Set the channel used for moderation action logs.",
+    )
+    @commands.has_permissions(manage_guild=True)
+    async def setmodlog(self, ctx, channel: discord.TextChannel):
+        await upsert_guild_settings(ctx.guild.id, mod_log_channel_id=channel.id)
+        embed = await make_embed(
+            self.bot,
+            guild=ctx.guild,
+            title="Mod Log Updated",
+            description=f"Moderation logs will now be sent to {channel.mention}.",
+            color=COLOR_SUCCESS,
+        )
+        await ctx.send(embed=embed)
+
+    @commands.command(
+        name="viewmodlog",
+        aliases=["modlogstatus"],
+        help="Show the current moderation log channel.",
+    )
+    @commands.has_permissions(manage_guild=True)
+    async def viewmodlog(self, ctx):
+        settings = await get_guild_settings(ctx.guild.id) or {}
+        channel_id = settings.get("mod_log_channel_id")
+        channel = ctx.guild.get_channel(channel_id) if channel_id else None
+
+        if not channel:
+            embed = await make_embed(
+                self.bot,
+                guild=ctx.guild,
+                title="Mod Log",
+                description="No moderation log channel is configured.",
+                color=COLOR_ERROR,
+            )
+            return await ctx.send(embed=embed)
+
+        embed = await make_embed(
+            self.bot,
+            guild=ctx.guild,
+            title="Mod Log",
+            description=f"Moderation logs are currently sent to {channel.mention}.",
+            color=COLOR_SUCCESS,
+        )
+        await ctx.send(embed=embed)
+
+    @commands.command(
+        name="clearmodlog",
+        aliases=["removemodlog"],
+        help="Disable moderation action logging.",
+    )
+    @commands.has_permissions(manage_guild=True)
+    async def clearmodlog(self, ctx):
+        await clear_mod_log_channel(ctx.guild.id)
+        embed = await make_embed(
+            self.bot,
+            guild=ctx.guild,
+            title="Mod Log Cleared",
+            description="Moderation logging has been disabled for this server.",
+            color=COLOR_SUCCESS,
+        )
+        await ctx.send(embed=embed)
+
+    @commands.command(
         name="setembedimage",
         aliases=["embedimage", "setembedgif"],
         help="Set a shared image or GIF that appears under bot embeds.",
@@ -287,5 +357,4 @@ class Configuration(commands.Cog, name="Configuration"):
 
 
 async def setup(bot):
-    await init_db()
     await bot.add_cog(Configuration(bot))

@@ -8,18 +8,18 @@ from datetime import datetime, timedelta
 import discord
 from discord.ext import commands, tasks
 
-from config import COLOR_ERROR, COLOR_MOD, COLOR_SUCCESS, MOD_LOG_CHANNEL_ID
+from config import COLOR_ERROR, COLOR_MOD, COLOR_SUCCESS
 from utils.db import (
     add_case,
     add_temp_ban,
     clear_recent_warns,
     get_expired_temp_bans,
     get_escalation_rules,
+    get_guild_settings,
     get_matching_escalation_rule,
     get_recent_warns,
     get_temp_bans_for_guild,
     get_warn_count,
-    init_db,
     remove_temp_ban,
     remove_escalation_rule,
     upsert_escalation_rule,
@@ -173,10 +173,12 @@ class Moderation(commands.Cog, name="Moderation"):
 
     async def send_mod_log(self, guild: discord.Guild, embed: discord.Embed):
         """Post an embed to the mod log channel if one is configured."""
-        if not MOD_LOG_CHANNEL_ID:
+        settings = await get_guild_settings(guild.id) or {}
+        channel_id = settings.get("mod_log_channel_id")
+        if not channel_id:
             return
 
-        channel = guild.get_channel(MOD_LOG_CHANNEL_ID)
+        channel = guild.get_channel(channel_id)
         if channel:
             await channel.send(embed=embed)
 
@@ -873,5 +875,4 @@ class Moderation(commands.Cog, name="Moderation"):
 
 async def setup(bot):
     """Required for discord.py to load the cog."""
-    await init_db()
     await bot.add_cog(Moderation(bot))
