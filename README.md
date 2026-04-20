@@ -136,6 +136,21 @@ Guild-specific customization is handled through commands such as:
 | `,topvoice [limit]` | Show top voice users |
 | `,stats [@user]` | Show stats for a user |
 
+### Music
+
+| Command | Description |
+| --- | --- |
+| `,join` | Join your current voice channel |
+| `,play <url or search>` | Play audio from a URL or search term |
+| `,queue` | Show the music queue |
+| `,skip` | Skip the current track |
+| `,pause` | Pause the current track |
+| `,resume` | Resume the paused track |
+| `,loop [on/off]` | Repeat the current track |
+| `,stop` | Stop playback and clear the queue |
+| `,leave` | Leave the current voice channel |
+| `,nowplaying` | Show the current track |
+
 ### Server Management
 
 | Command | Description |

@@ -314,6 +314,70 @@ class Music(commands.Cog, name="Music"):
             )
         )
 
+    @commands.command(name="pause", help="Pause the current track.")
+    async def pause(self, ctx):
+        """Usage: ,pause"""
+        voice = ctx.guild.voice_client
+        if not voice:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="I'm not connected to a voice channel.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        if voice.is_paused():
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="Playback is already paused.",
+                    color=COLOR_INFO,
+                )
+            )
+
+        if not voice.is_playing():
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="Nothing is playing right now.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        voice.pause()
+        await ctx.send(
+            embed=discord.Embed(
+                description="Paused the current track.",
+                color=COLOR_SUCCESS,
+            )
+        )
+
+    @commands.command(name="resume", help="Resume the paused track.")
+    async def resume(self, ctx):
+        """Usage: ,resume"""
+        voice = ctx.guild.voice_client
+        if not voice:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="I'm not connected to a voice channel.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        if not voice.is_paused():
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="Playback is not paused right now.",
+                    color=COLOR_INFO,
+                )
+            )
+
+        voice.resume()
+        await ctx.send(
+            embed=discord.Embed(
+                description="Resumed playback.",
+                color=COLOR_SUCCESS,
+            )
+        )
+
     @commands.command(name="stop", help="Stop playback and clear the queue.")
     async def stop(self, ctx):
         """Usage: ,stop"""
