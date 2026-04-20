@@ -207,6 +207,7 @@ Guild-specific customization is handled through commands such as:
 | `,ticketsettings` | Show ticket settings |
 | `,ticketadd @user` | Add a user to the ticket |
 | `,ticketremove @user` | Remove a user from the ticket |
+| `,ticketrename <name>` | Rename the current ticket channel |
 | `,closeticket` | Close the current ticket |
 
 ### Other

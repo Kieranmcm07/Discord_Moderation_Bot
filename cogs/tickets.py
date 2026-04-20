@@ -139,6 +139,11 @@ class Tickets(commands.Cog, name="Tickets"):
             view.add_item(TicketCreateButton(self, category))
         return view
 
+    async def _get_live_ticket_category(self, guild_id: int, category_id: int) -> dict | None:
+        """Return the current saved category config for a ticket button click."""
+        categories = await get_ticket_categories(guild_id)
+        return next((item for item in categories if item["id"] == category_id), None)
+
     async def _build_transcript(self, channel: discord.TextChannel) -> discord.File:
         lines = [f"Transcript for #{channel.name}", ""]
 
@@ -194,6 +199,16 @@ class Tickets(commands.Cog, name="Tickets"):
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
             return await interaction.response.send_message(
                 "Tickets can only be created inside a server.",
+                ephemeral=True,
+            )
+
+        live_category = await self._get_live_ticket_category(
+            interaction.guild.id,
+            category["id"],
+        )
+        if not live_category:
+            return await interaction.response.send_message(
+                "That ticket button is no longer active. Ask a staff member to post a fresh ticket panel.",
                 ephemeral=True,
             )
 
@@ -255,7 +270,7 @@ class Tickets(commands.Cog, name="Tickets"):
             )
 
         safe_user = slugify(interaction.user.display_name)
-        safe_category = slugify(category["name"])
+        safe_category = slugify(live_category["name"])
         channel_name = f"{safe_category}-{safe_user}"[:95]
 
         channel = await interaction.guild.create_text_channel(
@@ -270,7 +285,7 @@ class Tickets(commands.Cog, name="Tickets"):
             interaction.guild.id,
             channel.id,
             interaction.user.id,
-            category["name"],
+            live_category["name"],
         )
         ticket = await get_ticket_by_channel(channel.id)
 
@@ -279,14 +294,18 @@ class Tickets(commands.Cog, name="Tickets"):
             description=(
                 f"{interaction.user.mention}, thanks for opening a ticket.\n"
                 f"A member of staff will be with you soon.\n\n"
-                f"**Category:** {category['name']}\n"
+                f"**Category:** {live_category['name']}\n"
                 f"**Ticket ID:** #{ticket_id}"
             ),
             color=COLOR_INFO,
             timestamp=datetime.utcnow(),
         )
-        if category.get("description"):
-            embed.add_field(name="Details", value=category["description"], inline=False)
+        if live_category.get("description"):
+            embed.add_field(
+                name="Details",
+                value=live_category["description"],
+                inline=False,
+            )
         embed.add_field(name="Opened By", value=interaction.user.mention, inline=True)
         embed.add_field(
             name="Staff Roles",
@@ -696,6 +715,62 @@ class Tickets(commands.Cog, name="Tickets"):
             )
         )
         await self._close_ticket_channel(ctx.channel, ctx.author, ticket)
+
+    @commands.command(
+        name="ticketrename",
+        aliases=["renameticket"],
+        help="Rename the current open ticket channel.",
+    )
+    async def ticket_rename(self, ctx, *, new_name: str):
+        ticket = await get_ticket_by_channel(ctx.channel.id)
+        if not ticket or ticket["status"] != "open":
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="This command only works inside an open ticket.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        if not await self._is_ticket_staff(ctx.author):
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="Only ticket staff can rename tickets.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        cleaned_name = slugify(new_name)
+        if not cleaned_name:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="Give the ticket a valid name using letters or numbers.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        old_name = ctx.channel.name
+        updated_name = f"{slugify(ticket['category_name'])}-{cleaned_name}"[:95]
+        await ctx.channel.edit(
+            name=updated_name,
+            reason=f"Ticket renamed by {ctx.author}",
+        )
+        await ctx.send(
+            embed=discord.Embed(
+                description=f"Renamed this ticket from **{old_name}** to **{updated_name}**.",
+                color=COLOR_SUCCESS,
+            )
+        )
+        await self._log_ticket_event(
+            ctx.guild,
+            title="Ticket Renamed",
+            description=(
+                f"Ticket #{ticket['id']} was renamed by {ctx.author.mention}.\n"
+                f"**Old Name:** #{old_name}\n"
+                f"**New Name:** #{updated_name}"
+            ),
+            color=COLOR_INFO,
+            ticket=ticket,
+        )
 
 
 async def setup(bot):

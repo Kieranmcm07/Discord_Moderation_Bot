@@ -57,6 +57,8 @@ class GuildMusicState:
         self.queue: asyncio.Queue[Track] = asyncio.Queue()
         self.now_playing: Track | None = None
         self.player_task: asyncio.Task | None = None
+        self.loop_enabled = False
+        self.skip_requested = False
 
 
 class Music(commands.Cog, name="Music"):
@@ -168,25 +170,34 @@ class Music(commands.Cog, name="Music"):
 
         while True:
             track = await state.queue.get()
-            voice = guild.voice_client
+            while True:
+                voice = guild.voice_client
 
-            if voice is None:
+                if voice is None:
+                    state.now_playing = None
+                    state.skip_requested = False
+                    break
+
+                state.now_playing = track
+                state.skip_requested = False
+                finished = asyncio.Event()
+
+                def after_playback(error: Exception | None):
+                    if error:
+                        print(f"Music playback error in guild {guild.id}: {error}")
+                    self.bot.loop.call_soon_threadsafe(finished.set)
+
+                source = discord.FFmpegPCMAudio(track.stream_url, **FFMPEG_OPTIONS)
+                voice.play(source, after=after_playback)
+
+                await finished.wait()
+
+                if state.loop_enabled and not state.skip_requested:
+                    continue
+
                 state.now_playing = None
-                continue
-
-            state.now_playing = track
-            finished = asyncio.Event()
-
-            def after_playback(error: Exception | None):
-                if error:
-                    print(f"Music playback error in guild {guild.id}: {error}")
-                self.bot.loop.call_soon_threadsafe(finished.set)
-
-            source = discord.FFmpegPCMAudio(track.stream_url, **FFMPEG_OPTIONS)
-            voice.play(source, after=after_playback)
-
-            await finished.wait()
-            state.now_playing = None
+                state.skip_requested = False
+                break
 
     @commands.command(name="join", help="Join the voice channel you are currently in.")
     async def join(self, ctx):
@@ -255,9 +266,10 @@ class Music(commands.Cog, name="Music"):
         lines = []
 
         if state.now_playing:
+            loop_marker = " [Looping]" if state.loop_enabled else ""
             lines.append(
                 f"Now: [{state.now_playing.title}]({state.now_playing.webpage_url}) "
-                f"({state.now_playing.duration_text})"
+                f"({state.now_playing.duration_text}){loop_marker}"
             )
 
         queued = list(state.queue._queue)[:10]
@@ -292,6 +304,8 @@ class Music(commands.Cog, name="Music"):
                 )
             )
 
+        state = self.get_state(ctx.guild.id)
+        state.skip_requested = True
         voice.stop()
         await ctx.send(
             embed=discord.Embed(
@@ -321,6 +335,8 @@ class Music(commands.Cog, name="Music"):
                 break
 
         state.now_playing = None
+        state.loop_enabled = False
+        state.skip_requested = True
         if voice.is_playing():
             voice.stop()
 
@@ -352,6 +368,8 @@ class Music(commands.Cog, name="Music"):
                 break
 
         state.now_playing = None
+        state.loop_enabled = False
+        state.skip_requested = True
         if voice.is_playing():
             voice.stop()
         await voice.disconnect()
@@ -376,11 +394,54 @@ class Music(commands.Cog, name="Music"):
             )
 
         track = state.now_playing
+        loop_text = "\nLoop: On" if state.loop_enabled else ""
         await ctx.send(
             embed=discord.Embed(
                 title="Now Playing",
-                description=f"[{track.title}]({track.webpage_url})\nLength: {track.duration_text}",
+                description=(
+                    f"[{track.title}]({track.webpage_url})\n"
+                    f"Length: {track.duration_text}{loop_text}"
+                ),
                 color=COLOR_INFO,
+            )
+        )
+
+    @commands.command(
+        name="loop",
+        aliases=["repeat"],
+        help="Turn looping for the current track on or off.",
+    )
+    async def loop(self, ctx, mode: str | None = None):
+        """Usage: ,loop [on/off]"""
+        state = self.get_state(ctx.guild.id)
+
+        if mode is None:
+            state.loop_enabled = not state.loop_enabled
+        else:
+            mode = mode.lower()
+            if mode in {"on", "enable", "enabled", "true"}:
+                state.loop_enabled = True
+            elif mode in {"off", "disable", "disabled", "false"}:
+                state.loop_enabled = False
+            else:
+                return await ctx.send(
+                    embed=discord.Embed(
+                        description="Use `,loop on` or `,loop off`.",
+                        color=COLOR_ERROR,
+                    )
+                )
+
+        if state.loop_enabled and state.now_playing is None:
+            description = "Loop is enabled. It will repeat the next track that starts playing."
+        elif state.loop_enabled:
+            description = f"Loop enabled for [{state.now_playing.title}]({state.now_playing.webpage_url})."
+        else:
+            description = "Loop disabled."
+
+        await ctx.send(
+            embed=discord.Embed(
+                description=description,
+                color=COLOR_SUCCESS,
             )
         )
 
