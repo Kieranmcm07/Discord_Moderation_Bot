@@ -35,11 +35,15 @@ if errorlevel 1 (
     exit /b 0
 )
 
-taskkill /PID %BOT_PID% /T >nul
+taskkill /PID %BOT_PID% /T >nul 2>&1
 if errorlevel 1 (
-    echo Failed to stop bot process %BOT_PID%.
-    pause
-    exit /b 1
+    echo Bot process %BOT_PID% needs a force stop. Retrying...
+    taskkill /PID %BOT_PID% /T /F >nul 2>&1
+    if errorlevel 1 (
+        echo Failed to stop bot process %BOT_PID%.
+        pause
+        exit /b 1
+    )
 )
 
 echo Bot process %BOT_PID% stopped.
