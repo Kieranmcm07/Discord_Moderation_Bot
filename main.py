@@ -8,8 +8,11 @@ project easier to reason about.
 
 import argparse
 import asyncio
+import atexit
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 
 import discord
@@ -37,6 +40,8 @@ def parse_args():
 
 ARGS = parse_args()
 STATUS_FILE = Path(ARGS.status_file).resolve() if ARGS.status_file else None
+LOCK_FILE = Path(tempfile.gettempdir()) / "discord_mod_bot.lock"
+LOCK_ACQUIRED = False
 
 
 def configure_logging():
@@ -64,8 +69,77 @@ def write_status(state: str, message: str):
     )
 
 
+def _pid_is_running(pid: int) -> bool:
+    """Check whether a stored process id still appears to be alive."""
+    if pid <= 0:
+        return False
+
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def release_lock():
+    """Remove the single-instance lock if this process owns it."""
+    global LOCK_ACQUIRED
+
+    if not LOCK_ACQUIRED:
+        return
+
+    try:
+        payload = json.loads(LOCK_FILE.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        LOCK_ACQUIRED = False
+        return
+
+    if payload.get("pid") == os.getpid():
+        try:
+            LOCK_FILE.unlink()
+        except FileNotFoundError:
+            pass
+
+    LOCK_ACQUIRED = False
+
+
+def acquire_lock():
+    """Prevent accidental double-starts from the launcher or startup scripts."""
+    global LOCK_ACQUIRED
+
+    payload = json.dumps({"pid": os.getpid()}, ensure_ascii=True)
+
+    try:
+        with LOCK_FILE.open("x", encoding="utf-8") as handle:
+            handle.write(payload)
+        LOCK_ACQUIRED = True
+        return
+    except FileExistsError:
+        pass
+
+    try:
+        existing = json.loads(LOCK_FILE.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        existing = None
+
+    if existing and _pid_is_running(int(existing.get("pid", 0))):
+        raise RuntimeError(
+            f"Another bot process is already running with PID {existing['pid']}."
+        )
+
+    try:
+        LOCK_FILE.unlink()
+    except FileNotFoundError:
+        pass
+
+    with LOCK_FILE.open("x", encoding="utf-8") as handle:
+        handle.write(payload)
+    LOCK_ACQUIRED = True
+
+
 configure_logging()
 log = logging.getLogger("bot")
+atexit.register(release_lock)
 
 # The bot only enables the intents it actually uses.
 intents = discord.Intents.default()
@@ -233,8 +307,11 @@ async def main():
 if __name__ == "__main__":
     try:
         write_status("starting", "Booting bot...")
+        acquire_lock()
         asyncio.run(main())
     except Exception as exc:
         log.exception("Bot failed to start")
         write_status("failed", str(exc))
         raise
+    finally:
+        release_lock()
