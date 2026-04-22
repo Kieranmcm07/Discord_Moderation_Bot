@@ -3,6 +3,7 @@ cogs/moderation.py - moderation commands and warn escalation rules.
 """
 
 import asyncio
+import re
 from datetime import datetime, timedelta
 
 import discord
@@ -23,6 +24,12 @@ from utils.db import (
     remove_temp_ban,
     remove_escalation_rule,
     upsert_escalation_rule,
+)
+
+
+LINK_PATTERN = re.compile(
+    r"(https?://\S+|discord(?:app)?\.com/invite/\S+|discord\.gg/\S+)",
+    re.IGNORECASE,
 )
 
 
@@ -725,6 +732,71 @@ class Moderation(commands.Cog, name="Moderation"):
         msg = await ctx.send(
             embed=discord.Embed(
                 description=f"Deleted **{removed}** messages{scope}.",
+                color=COLOR_SUCCESS,
+            )
+        )
+        await asyncio.sleep(3)
+        await msg.delete()
+
+    @commands.command(
+        name="purgelinks",
+        aliases=["clearlinks", "linkpurge"],
+        help="Delete recent messages that contain links or Discord invites.",
+    )
+    @commands.has_permissions(manage_messages=True)
+    @commands.bot_has_permissions(manage_messages=True)
+    async def purgelinks(self, ctx, amount: int = 100):
+        """Usage: ,purgelinks [amount]"""
+        if amount < 1 or amount > 1000:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="Amount must be between 1 and 1000.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        deleted = await ctx.channel.purge(
+            limit=amount + 1,
+            check=lambda message: message.id == ctx.message.id
+            or bool(LINK_PATTERN.search(message.content)),
+        )
+        removed = max(0, len(deleted) - 1)
+        msg = await ctx.send(
+            embed=discord.Embed(
+                description=(
+                    f"Deleted **{removed}** recent message(s) containing links or invites."
+                ),
+                color=COLOR_SUCCESS,
+            )
+        )
+        await asyncio.sleep(3)
+        await msg.delete()
+
+    @commands.command(
+        name="purgebots",
+        aliases=["clearbots", "botpurge"],
+        help="Delete recent messages sent by bots in the current channel.",
+    )
+    @commands.has_permissions(manage_messages=True)
+    @commands.bot_has_permissions(manage_messages=True)
+    async def purgebots(self, ctx, amount: int = 100):
+        """Usage: ,purgebots [amount]"""
+        if amount < 1 or amount > 1000:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="Amount must be between 1 and 1000.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        deleted = await ctx.channel.purge(
+            limit=amount + 1,
+            check=lambda message: message.id == ctx.message.id or message.author.bot,
+        )
+        removed = max(0, len(deleted) - 1)
+        msg = await ctx.send(
+            embed=discord.Embed(
+                description=f"Deleted **{removed}** recent bot message(s).",
                 color=COLOR_SUCCESS,
             )
         )
