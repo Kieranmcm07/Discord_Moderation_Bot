@@ -21,7 +21,18 @@ from utils.db import (
 )
 
 
-NUMBER_EMOJIS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+NUMBER_EMOJIS = [
+    "1\ufe0f\u20e3",
+    "2\ufe0f\u20e3",
+    "3\ufe0f\u20e3",
+    "4\ufe0f\u20e3",
+    "5\ufe0f\u20e3",
+    "6\ufe0f\u20e3",
+    "7\ufe0f\u20e3",
+    "8\ufe0f\u20e3",
+    "9\ufe0f\u20e3",
+    "\U0001f51f",
+]
 
 
 class ServerManagement(commands.Cog, name="Server Management"):

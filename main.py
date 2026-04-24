@@ -9,6 +9,7 @@ project easier to reason about.
 import argparse
 import asyncio
 import atexit
+import difflib
 import json
 import logging
 import os
@@ -227,6 +228,39 @@ class MyBot(commands.Bot):
     async def on_command_error(self, ctx: commands.Context, error):
         """Keep user-facing errors friendly while still logging real failures."""
         if isinstance(error, commands.CommandNotFound):
+            attempted = (ctx.invoked_with or "").strip()
+            if not attempted:
+                return
+
+            visible_commands = [
+                command
+                for command in self.walk_commands()
+                if not command.hidden and command.enabled
+            ]
+            names = sorted(
+                {
+                    name
+                    for command in visible_commands
+                    for name in (command.qualified_name, *command.aliases)
+                }
+            )
+            matches = difflib.get_close_matches(attempted, names, n=3, cutoff=0.55)
+            if not matches:
+                return
+
+            suggestions = "\n".join(f"`{PREFIX}{name}`" for name in matches)
+            await ctx.send(
+                embed=await make_embed(
+                    self,
+                    guild=ctx.guild,
+                    title="Unknown Command",
+                    description=(
+                        f"I do not have `{PREFIX}{attempted}`.\n\n"
+                        f"Did you mean:\n{suggestions}"
+                    ),
+                    color=discord.Color.orange(),
+                )
+            )
             return
 
         if isinstance(error, commands.MissingPermissions):

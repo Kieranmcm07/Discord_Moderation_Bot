@@ -289,6 +289,17 @@ async def get_recent_cases(guild_id, limit=10) -> list[dict]:
             return [dict(row) for row in rows]
 
 
+async def update_case_reason(guild_id, case_id: int, reason: str) -> bool:
+    """Update the reason on an existing case and report whether it changed."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE cases SET reason=? WHERE guild_id=? AND id=?",
+            (reason, guild_id, case_id),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
 async def get_warn_count(guild_id, user_id) -> int:
     """Count the active warning cases for a user."""
     async with aiosqlite.connect(DB_PATH) as db:

@@ -18,12 +18,14 @@ from utils.db import (
     get_recent_cases,
     get_user_cases,
     get_warn_count,
+    update_case_reason,
 )
 from utils.embeds import make_embed
 
 
 ACTION_LABELS = {
     "ban": "Ban",
+    "softban": "Softban",
     "unban": "Unban",
     "kick": "Kick",
     "tempban": "Temporary Ban",
@@ -312,6 +314,66 @@ class Cases(commands.Cog, name="Cases"):
             description=f"Added a follow-up note to case `#{case_id}` as new case `#{new_case_id}`.",
             color=COLOR_MOD,
         )
+        await ctx.send(embed=embed)
+
+    @commands.command(
+        name="reason",
+        aliases=["editreason", "casereason"],
+        help="Update the reason on an existing moderation case.",
+    )
+    @commands.has_permissions(kick_members=True)
+    async def reason(self, ctx, case_id: int, *, new_reason: str):
+        """Usage: ,reason <case_id> <new reason>"""
+        original = await get_case(ctx.guild.id, case_id)
+        if not original:
+            embed = await make_embed(
+                self.bot,
+                guild=ctx.guild,
+                title="Case Not Found",
+                description=f"I could not find case `#{case_id}` in this server.",
+                color=COLOR_ERROR,
+            )
+            return await ctx.send(embed=embed)
+
+        new_reason = new_reason.strip()
+        if not new_reason:
+            embed = await make_embed(
+                self.bot,
+                guild=ctx.guild,
+                title="Missing Reason",
+                description="Give me the new reason to save on that case.",
+                color=COLOR_ERROR,
+            )
+            return await ctx.send(embed=embed)
+
+        await update_case_reason(ctx.guild.id, case_id, new_reason)
+        audit_case_id = await add_case(
+            ctx.guild.id,
+            original["user_id"],
+            ctx.author.id,
+            "note",
+            f"Updated reason for case #{case_id}: {new_reason}",
+        )
+
+        target = self.bot.get_user(original["user_id"]) or f"ID: {original['user_id']}"
+        embed = await make_embed(
+            self.bot,
+            guild=ctx.guild,
+            title="Case Reason Updated",
+            description=(
+                f"Updated case `#{case_id}` for {target}.\n"
+                f"Audit note saved as case `#{audit_case_id}`."
+            ),
+            color=COLOR_MOD,
+        )
+        old_reason = original["reason"] or "No reason given"
+        if len(old_reason) > 180:
+            old_reason = f"{old_reason[:177]}..."
+        shown_new_reason = new_reason
+        if len(shown_new_reason) > 180:
+            shown_new_reason = f"{shown_new_reason[:177]}..."
+        embed.add_field(name="Old Reason", value=old_reason, inline=False)
+        embed.add_field(name="New Reason", value=shown_new_reason, inline=False)
         await ctx.send(embed=embed)
 
 

@@ -13,9 +13,10 @@ This project is especially suited to small and mid-sized servers that want:
 
 ## Highlights
 
-- Moderation commands for bans, tempbans, kicks, warns, timeouts, purge, clean, and slowmode
+- Moderation commands for bans, softbans, tempbans, kicks, warns, timeouts, purge, clean, and slowmode
 - Warning escalation rules that can automatically timeout, kick, or ban after a threshold
 - Case tracking with history, recent cases, case search, and follow-up case comments
+- Searchable help plus typo suggestions for close command names
 - Invite logging with join context and a basic account-age check
 - Activity tracking for chat and voice with leaderboards and per-user stats
 - Ticket system with category buttons, transcripts, staff roles, and private ticket channels
@@ -101,6 +102,7 @@ Guild-specific customization is handled through commands such as:
 | Command                                      | Description                                      |
 | -------------------------------------------- | ------------------------------------------------ |
 | `,ban @user [reason]`                        | Ban a member                                     |
+| `,softban @user [days] [reason]`             | Ban then unban a member to clear recent messages |
 | `,tempban @user <duration> [reason]`         | Ban a member for a limited time                  |
 | `,tempbans`                                  | Show active temporary bans                       |
 | `,unban <user_id> [reason]`                  | Unban a user by ID                               |
@@ -127,6 +129,7 @@ Guild-specific customization is handled through commands such as:
 | `,recentcases [limit]`          | Show recent moderation actions                  |
 | `,searchcases <query>`          | Search recent cases by action or reason text    |
 | `,casecomment <case_id> <note>` | Add a follow-up note linked to an existing case |
+| `,reason <case_id> <reason>`    | Update the reason on an existing case           |
 
 ### Activity
 
@@ -230,6 +233,7 @@ Guild-specific customization is handled through commands such as:
 | Command           | Description                                        |
 | ----------------- | -------------------------------------------------- |
 | `,help [command]` | Show grouped help or detailed help for one command |
+| `,help search <word>` | Search commands by name, alias, usage, or description |
 | `,invites`        | Show active invites in the server                  |
 
 ## Embed Branding
@@ -297,6 +301,7 @@ Recommended privileged intents:
 
 - The bot stores its data in SQLite, by default at `data/bot.db`.
 - The custom help command is available with `,help`.
+- Durations accept compact or readable formats, such as `30m`, `1h30m`, `2 hours`, and `7d`.
 - Temporary bans are automatically checked and lifted in the background while the bot is online.
 - Welcome and leave templates support `{user}`, `{username}`, `{server}`, and `{count}` placeholders.
 - Voice tracking is lightweight and only records time while the bot is running.

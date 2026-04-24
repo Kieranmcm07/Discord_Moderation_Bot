@@ -34,19 +34,49 @@ LINK_PATTERN = re.compile(
 
 
 def parse_duration(duration_str: str) -> int | None:
-    """Convert strings like 10m, 2h, or 1d into seconds."""
+    """Convert strings like 10m, 1h30m, or 2 days into seconds."""
     if not duration_str:
         return None
 
-    units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
-    unit = duration_str[-1].lower()
-    if unit not in units:
+    normalized = duration_str.strip().lower()
+    units = {
+        "s": 1,
+        "sec": 1,
+        "secs": 1,
+        "second": 1,
+        "seconds": 1,
+        "m": 60,
+        "min": 60,
+        "mins": 60,
+        "minute": 60,
+        "minutes": 60,
+        "h": 3600,
+        "hr": 3600,
+        "hrs": 3600,
+        "hour": 3600,
+        "hours": 3600,
+        "d": 86400,
+        "day": 86400,
+        "days": 86400,
+    }
+    pattern = re.compile(
+        r"(?P<amount>\d+)\s*(?P<unit>seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d)"
+    )
+
+    total = 0
+    position = 0
+    for match in pattern.finditer(normalized):
+        between = normalized[position : match.start()]
+        if between.strip():
+            return None
+
+        total += int(match.group("amount")) * units[match.group("unit")]
+        position = match.end()
+
+    if normalized[position:].strip() or total <= 0:
         return None
 
-    try:
-        return int(duration_str[:-1]) * units[unit]
-    except ValueError:
-        return None
+    return total
 
 
 class Moderation(commands.Cog, name="Moderation"):
@@ -323,7 +353,7 @@ class Moderation(commands.Cog, name="Moderation"):
         if seconds is None:
             return await ctx.send(
                 embed=discord.Embed(
-                    description="Bad duration format. Use something like `30m`, `12h`, or `7d`.",
+                    description="Bad duration format. Use something like `30m`, `1h30m`, `12 hours`, or `7d`.",
                     color=COLOR_ERROR,
                 )
             )
@@ -418,6 +448,66 @@ class Moderation(commands.Cog, name="Moderation"):
         await target.kick(reason=f"{reason or 'No reason given'} | Mod: {ctx.author}")
         case_id = await add_case(ctx.guild.id, target.id, ctx.author.id, "kick", reason)
         embed = self.mod_embed("Kick", target, ctx.author, reason, case_id)
+        await ctx.send(embed=embed)
+        await self.send_mod_log(ctx.guild, embed)
+
+    @commands.command(
+        name="softban",
+        aliases=["sb"],
+        help="Ban then immediately unban a user to clear recent messages.",
+    )
+    @commands.has_permissions(ban_members=True)
+    @commands.bot_has_permissions(ban_members=True)
+    async def softban(self, ctx, target: discord.Member, *, details: str = None):
+        """Usage: ,softban @user [delete_days] [reason]"""
+        delete_days = 1
+        reason = details
+        if details:
+            first_word, _, remainder = details.partition(" ")
+            if first_word.isdigit():
+                delete_days = int(first_word)
+                reason = remainder.strip() or None
+
+        if delete_days < 0 or delete_days > 7:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="Delete days must be between 0 and 7.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        blocked = await self.can_moderate(ctx, target, "softban")
+        if blocked:
+            return await ctx.send(embed=blocked)
+
+        await self.send_action_dm(
+            target,
+            guild_name=ctx.guild.name,
+            action_text="softbanned",
+            reason=reason,
+        )
+        audit_reason = f"{reason or 'No reason given'} | Softban by {ctx.author}"
+        await target.ban(
+            reason=audit_reason,
+            delete_message_seconds=delete_days * 86400,
+        )
+        await ctx.guild.unban(target, reason=f"Softban complete | Mod: {ctx.author}")
+        case_id = await add_case(
+            ctx.guild.id,
+            target.id,
+            ctx.author.id,
+            "softban",
+            reason,
+            f"{delete_days} day(s)",
+        )
+        embed = self.mod_embed(
+            "Softban",
+            target,
+            ctx.author,
+            reason,
+            case_id,
+            f"{delete_days} day(s) deleted",
+        )
         await ctx.send(embed=embed)
         await self.send_mod_log(ctx.guild, embed)
 
@@ -606,7 +696,7 @@ class Moderation(commands.Cog, name="Moderation"):
         if seconds is None:
             return await ctx.send(
                 embed=discord.Embed(
-                    description="Bad duration format. Use something like `10m`, `2h`, `1d`.",
+                    description="Bad duration format. Use something like `10m`, `1h30m`, `2 hours`, or `1d`.",
                     color=COLOR_ERROR,
                 )
             )
@@ -861,7 +951,7 @@ class Moderation(commands.Cog, name="Moderation"):
                 return await ctx.send(
                     embed=discord.Embed(
                         description=(
-                            "Timeout rules need a valid duration like `30m`, `2h`, or `1d`."
+                            "Timeout rules need a valid duration like `30m`, `1h30m`, `2h`, or `1d`."
                         ),
                         color=COLOR_ERROR,
                     )
