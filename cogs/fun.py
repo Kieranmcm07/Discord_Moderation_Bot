@@ -23,6 +23,7 @@ EIGHT_BALL_ANSWERS = [
     "Absolutely.",
 ]
 
+# These jokes are so ass ngl. lol
 JOKES = [
     (
         "Why did the moderator bring a ladder?",
