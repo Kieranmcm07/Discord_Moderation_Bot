@@ -207,6 +207,8 @@ Guild-specific customization is handled through commands such as:
 | `,coinflip`                    | Flip a coin                        |
 | `,roll [max]`                  | Roll a number                      |
 | `,choose Option 1 \| Option 2` | Let the bot choose between options |
+| `,joke`                        | Tell a random clean joke           |
+| `,meme [top \| bottom]`        | Post a random generated meme image |
 | `,ship @user1 @user2`          | Generate a fun ship score          |
 
 ### Tickets
