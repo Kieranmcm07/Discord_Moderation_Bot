@@ -237,6 +237,32 @@ async def init_db():
             """
         )
 
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sentinel_settings (
+                guild_id             INTEGER PRIMARY KEY,
+                enabled              INTEGER NOT NULL DEFAULT 1,
+                log_channel_id        INTEGER,
+                alert_threshold       INTEGER NOT NULL DEFAULT 70,
+                auto_timeout_seconds  INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sentinel_incidents (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id    INTEGER NOT NULL,
+                user_id     INTEGER,
+                channel_id  INTEGER,
+                score       INTEGER NOT NULL,
+                reasons     TEXT NOT NULL,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
         await db.commit()
 
 
@@ -1012,3 +1038,225 @@ async def get_reaction_roles(guild_id) -> list[dict]:
         ) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
+
+
+async def get_sentinel_settings(guild_id) -> dict:
+    """Return Sentinel settings, using sensible defaults before configuration."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM sentinel_settings WHERE guild_id=?",
+            (guild_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+
+    if row:
+        return dict(row)
+
+    return {
+        "guild_id": guild_id,
+        "enabled": 1,
+        "log_channel_id": None,
+        "alert_threshold": 70,
+        "auto_timeout_seconds": 0,
+    }
+
+
+async def upsert_sentinel_settings(
+    guild_id,
+    *,
+    enabled=None,
+    log_channel_id=None,
+    alert_threshold=None,
+    auto_timeout_seconds=None,
+):
+    """Create or update Sentinel settings without clearing untouched values."""
+    current = await get_sentinel_settings(guild_id)
+    values = {
+        "enabled": enabled if enabled is not None else current.get("enabled", 1),
+        "log_channel_id": (
+            log_channel_id
+            if log_channel_id is not None
+            else current.get("log_channel_id")
+        ),
+        "alert_threshold": (
+            alert_threshold
+            if alert_threshold is not None
+            else current.get("alert_threshold", 70)
+        ),
+        "auto_timeout_seconds": (
+            auto_timeout_seconds
+            if auto_timeout_seconds is not None
+            else current.get("auto_timeout_seconds", 0)
+        ),
+    }
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO sentinel_settings (
+                guild_id, enabled, log_channel_id, alert_threshold, auto_timeout_seconds
+            ) VALUES (?,?,?,?,?)
+            ON CONFLICT(guild_id) DO UPDATE SET
+            enabled=excluded.enabled,
+            log_channel_id=excluded.log_channel_id,
+            alert_threshold=excluded.alert_threshold,
+            auto_timeout_seconds=excluded.auto_timeout_seconds
+            """,
+            (
+                guild_id,
+                int(values["enabled"]),
+                values["log_channel_id"],
+                int(values["alert_threshold"]),
+                int(values["auto_timeout_seconds"]),
+            ),
+        )
+        await db.commit()
+
+
+async def add_sentinel_incident(
+    guild_id,
+    user_id: int | None,
+    channel_id: int | None,
+    score: int,
+    reasons: str,
+) -> int:
+    """Store a Sentinel incident and return its generated ID."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            """
+            INSERT INTO sentinel_incidents (guild_id, user_id, channel_id, score, reasons)
+            VALUES (?,?,?,?,?)
+            """,
+            (guild_id, user_id, channel_id, score, reasons),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_recent_sentinel_incidents(guild_id, limit=10) -> list[dict]:
+    """Return the newest Sentinel incidents for a guild."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT * FROM sentinel_incidents
+            WHERE guild_id=?
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            (guild_id, limit),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def get_case_action_counts(guild_id, days: int = 7) -> list[dict]:
+    """Return moderation action counts for a recent time window."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT action, COUNT(*) AS total
+            FROM cases
+            WHERE guild_id=? AND datetime(created_at) >= datetime('now', ?)
+            GROUP BY action
+            ORDER BY total DESC, action ASC
+            """,
+            (guild_id, f"-{days} days"),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def get_member_event_counts(guild_id, days: int = 7) -> dict:
+    """Return join and leave counts for a recent time window."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """
+            SELECT event, COUNT(*) AS total
+            FROM member_log
+            WHERE guild_id=? AND datetime(created_at) >= datetime('now', ?)
+            GROUP BY event
+            """,
+            (guild_id, f"-{days} days"),
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+    return {row[0]: row[1] for row in rows}
+
+
+async def get_ticket_summary(guild_id) -> dict:
+    """Return ticket totals grouped by status."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """
+            SELECT status, COUNT(*) AS total
+            FROM tickets
+            WHERE guild_id=?
+            GROUP BY status
+            """,
+            (guild_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+    summary = {"open": 0, "closed": 0, "total": 0}
+    for status, total in rows:
+        summary[status] = total
+        summary["total"] += total
+    return summary
+
+
+async def get_message_total(guild_id, days: int | None = None) -> int:
+    """Return recorded message volume, optionally scoped to recent days."""
+    query = "SELECT COALESCE(SUM(count), 0) FROM message_stats WHERE guild_id=?"
+    params: list = [guild_id]
+    if days is not None:
+        query += " AND date(day) >= date('now', ?)"
+        params.append(f"-{days} days")
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(query, params) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0] or 0)
+
+
+async def get_user_message_total(guild_id, user_id) -> int:
+    """Return all recorded messages for one member."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """
+            SELECT COALESCE(SUM(count), 0)
+            FROM message_stats
+            WHERE guild_id=? AND user_id=?
+            """,
+            (guild_id, user_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0] or 0)
+
+
+async def get_user_voice_minutes(guild_id, user_id) -> int:
+    """Return all recorded voice minutes for one member."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT minutes FROM voice_stats WHERE guild_id=? AND user_id=?",
+            (guild_id, user_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0] or 0) if row else 0
+
+
+async def get_sentinel_incident_count(guild_id, days: int = 7) -> int:
+    """Return the number of Sentinel incidents in a recent time window."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """
+            SELECT COUNT(*)
+            FROM sentinel_incidents
+            WHERE guild_id=? AND datetime(created_at) >= datetime('now', ?)
+            """,
+            (guild_id, f"-{days} days"),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0] or 0)

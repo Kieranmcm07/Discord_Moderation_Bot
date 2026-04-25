@@ -179,6 +179,7 @@ class MyBot(commands.Bot):
             help_command=None,
             case_insensitive=True,
         )
+        self.started_at = discord.utils.utcnow()
 
     async def setup_hook(self):
         """Load all cogs before connecting so commands are ready immediately."""
@@ -187,6 +188,8 @@ class MyBot(commands.Bot):
             "cogs.cases",
             "cogs.invite_logger",
             "cogs.activity",
+            "cogs.sentinel",
+            "cogs.command_center",
             "cogs.music",
             "cogs.server_management",
             "cogs.tickets",

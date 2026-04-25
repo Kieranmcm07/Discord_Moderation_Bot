@@ -15,6 +15,7 @@ from utils.db import (
     get_escalation_rules,
     get_guild_settings,
     get_reaction_roles,
+    get_sentinel_settings,
     get_ticket_settings,
     clear_mod_log_channel,
     remove_embed_image,
@@ -95,6 +96,7 @@ class Configuration(commands.Cog, name="Configuration"):
         stickies = await get_all_sticky_messages(ctx.guild.id)
         ticket_settings = await get_ticket_settings(ctx.guild.id) or {}
         reaction_roles = await get_reaction_roles(ctx.guild.id)
+        sentinel_settings = await get_sentinel_settings(ctx.guild.id)
 
         embed = await make_embed(
             self.bot,
@@ -156,6 +158,15 @@ class Configuration(commands.Cog, name="Configuration"):
         embed.add_field(
             name="Ticket Setup",
             value="Configured" if ticket_settings.get("category_id") else "Not set",
+            inline=True,
+        )
+        embed.add_field(
+            name="Sentinel",
+            value=(
+                "Enabled"
+                if sentinel_settings.get("enabled")
+                else "Disabled"
+            ),
             inline=True,
         )
         await ctx.send(embed=embed)

@@ -16,8 +16,12 @@ This project is especially suited to small and mid-sized servers that want:
 - Moderation commands for bans, softbans, tempbans, kicks, warns, timeouts, purge, clean, and slowmode
 - Warning escalation rules that can automatically timeout, kick, or ban after a threshold
 - Case tracking with history, recent cases, case search, and follow-up case comments
+- Mission Control dashboard with setup health, tickets, moderation load, activity, and Sentinel status
+- Member 360 profiles that combine moderation, activity, account age, and live risk signals
+- Bot Doctor setup diagnosis for permissions, logs, tickets, Sentinel, branding, and autorole
 - Searchable help plus typo suggestions for close command names
 - Invite logging with join context and a basic account-age check
+- Sentinel live threat radar for explainable raid, spam, link flood, and mention storm detection
 - Activity tracking for chat and voice with leaderboards and per-user stats
 - Ticket system with category buttons, transcripts, staff roles, and private ticket channels
 - Sticky messages, autorole, polls, announcements, lock/unlock, and nickname tools
@@ -131,6 +135,15 @@ Guild-specific customization is handled through commands such as:
 | `,casecomment <case_id> <note>` | Add a follow-up note linked to an existing case |
 | `,reason <case_id> <reason>`    | Update the reason on an existing case           |
 
+### Command Center
+
+| Command            | Description                                                 |
+| ------------------ | ----------------------------------------------------------- |
+| `,missioncontrol`  | Open the premium staff dashboard for this server            |
+| `,dashboard`       | Alias for Mission Control                                   |
+| `,doctor`          | Diagnose bot permissions and server setup gaps              |
+| `,member360 @user` | Show a complete staff intelligence profile for one member   |
+
 ### Activity
 
 | Command             | Description              |
@@ -138,6 +151,19 @@ Guild-specific customization is handled through commands such as:
 | `,topchat [limit]`  | Show top message senders |
 | `,topvoice [limit]` | Show top voice users     |
 | `,stats [@user]`    | Show stats for a user    |
+
+### Sentinel
+
+| Command                               | Description                                |
+| ------------------------------------- | ------------------------------------------ |
+| `,sentinel`                           | Show the live raid/spam intelligence panel |
+| `,sentinel on`                        | Enable Sentinel detection                  |
+| `,sentinel off`                       | Disable Sentinel detection                 |
+| `,sentinel threshold <40-95>`         | Set the risk score needed for alerts       |
+| `,sentinel log #channel`              | Set the Sentinel alert channel             |
+| `,sentinel autotimeout <seconds|off>` | Auto-timeout high-risk users               |
+| `,sentinelprofile @user`              | Show a member's live behaviour profile     |
+| `,sentinelincidents [limit]`          | Show recent Sentinel incident records      |
 
 ### Music
 
@@ -238,6 +264,31 @@ Guild-specific customization is handled through commands such as:
 | `,help search <word>` | Search commands by name, alias, usage, or description |
 | `,invites`        | Show active invites in the server                  |
 
+## Command Center
+
+The Command Center is the bot's staff operations layer.
+
+- `,missioncontrol` shows server health, moderation volume, ticket load,
+  community join/leave flow, top activity, Sentinel status, and recommended
+  next actions
+- The dashboard includes buttons to refresh, run Bot Doctor, and view open
+  tickets without typing more commands
+- `,doctor` checks the practical setup details that usually cause bots to feel
+  half-finished: missing permissions, mod logs, ticket setup, Sentinel state,
+  branding, and autorole problems
+- `,member360` gives staff a complete member snapshot in one embed
+
+## Sentinel Threat Radar
+
+Sentinel is a local, explainable detection layer for staff. It watches short live
+windows for patterns such as message bursts, repeated text, link floods, mention
+storms, suspicious join waves, and very new accounts.
+
+- It sends incident embeds with a clear risk score and the reasons it fired
+- It falls back to the moderation log channel if no Sentinel log channel is set
+- It can optionally timeout high-risk users for a configured number of seconds
+- It stores incident metadata, not full message content
+
 ## Embed Branding
 
 The bot now applies shared branding to embeds more consistently.
@@ -279,6 +330,7 @@ Recommended privileged intents:
 |-- cogs/
 |   |-- activity.py
 |   |-- cases.py
+|   |-- command_center.py
 |   |-- configuration.py
 |   |-- fun.py
 |   |-- help.py
@@ -287,6 +339,7 @@ Recommended privileged intents:
 |   |-- music.py
 |   |-- reaction_roles.py
 |   |-- server_management.py
+|   |-- sentinel.py
 |   `-- tickets.py
 |-- data/
 |-- utils/
