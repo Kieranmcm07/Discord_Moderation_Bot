@@ -13,7 +13,15 @@ from datetime import datetime
 import discord
 from discord.ext import commands
 
-from config import COLOR_ERROR, COLOR_INFO, COLOR_MOD, COLOR_SUCCESS, COLOR_WARN, PREFIX
+from config import (
+    COLOR_ERROR,
+    COLOR_INFO,
+    COLOR_MOD,
+    COLOR_SUCCESS,
+    COLOR_WARN,
+    PREFIX,
+    resolve_mod_log_channel_id,
+)
 from utils.db import (
     get_active_temp_ban,
     get_all_sticky_messages,
@@ -143,6 +151,7 @@ class CommandCenter(commands.Cog, name="Command Center"):
 
     async def health_checks(self, guild: discord.Guild) -> list[tuple[str, bool, str]]:
         settings = await get_guild_settings(guild.id) or {}
+        mod_log_channel_id = resolve_mod_log_channel_id(settings)
         ticket_settings = await get_ticket_settings(guild.id) or {}
         ticket_categories = await get_ticket_categories(guild.id)
         ticket_roles = await get_ticket_roles(guild.id)
@@ -165,8 +174,8 @@ class CommandCenter(commands.Cog, name="Command Center"):
             ),
             (
                 "Moderation log",
-                bool(settings.get("mod_log_channel_id")),
-                "Configured" if settings.get("mod_log_channel_id") else "Not set",
+                bool(mod_log_channel_id),
+                "Configured" if mod_log_channel_id else "Not set",
             ),
             (
                 "Tickets",

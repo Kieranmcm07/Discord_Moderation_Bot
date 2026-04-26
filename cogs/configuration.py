@@ -8,7 +8,7 @@ messages, embed theming, and the optional shared image or GIF for branded embeds
 import discord
 from discord.ext import commands
 
-from config import COLOR_ERROR, COLOR_SUCCESS
+from config import COLOR_ERROR, COLOR_SUCCESS, resolve_mod_log_channel_id
 from utils.db import (
     get_all_sticky_messages,
     get_autorole,
@@ -127,10 +127,10 @@ class Configuration(commands.Cog, name="Configuration"):
             f"`#{embed_color:06X}`" if embed_color is not None else "Default"
         )
         embed_image_value = settings.get("embed_image_url") or "Not set"
+        mod_log_channel_id = resolve_mod_log_channel_id(settings)
         mod_log_channel = (
-            ctx.guild.get_channel(settings["mod_log_channel_id"]).mention
-            if settings.get("mod_log_channel_id")
-            and ctx.guild.get_channel(settings["mod_log_channel_id"])
+            ctx.guild.get_channel(mod_log_channel_id).mention
+            if mod_log_channel_id and ctx.guild.get_channel(mod_log_channel_id)
             else "Not set"
         )
 
@@ -297,7 +297,7 @@ class Configuration(commands.Cog, name="Configuration"):
     @commands.has_permissions(manage_guild=True)
     async def viewmodlog(self, ctx):
         settings = await get_guild_settings(ctx.guild.id) or {}
-        channel_id = settings.get("mod_log_channel_id")
+        channel_id = resolve_mod_log_channel_id(settings)
         channel = ctx.guild.get_channel(channel_id) if channel_id else None
 
         if not channel:

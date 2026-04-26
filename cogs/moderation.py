@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import discord
 from discord.ext import commands, tasks
 
-from config import COLOR_ERROR, COLOR_MOD, COLOR_SUCCESS
+from config import COLOR_ERROR, COLOR_MOD, COLOR_SUCCESS, resolve_mod_log_channel_id
 from utils.db import (
     add_case,
     add_temp_ban,
@@ -213,7 +213,7 @@ class Moderation(commands.Cog, name="Moderation"):
     async def send_mod_log(self, guild: discord.Guild, embed: discord.Embed):
         """Post an embed to the mod log channel if one is configured."""
         settings = await get_guild_settings(guild.id) or {}
-        channel_id = settings.get("mod_log_channel_id")
+        channel_id = resolve_mod_log_channel_id(settings)
         if not channel_id:
             return
 

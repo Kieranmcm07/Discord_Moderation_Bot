@@ -14,7 +14,14 @@ from datetime import datetime, timedelta
 import discord
 from discord.ext import commands
 
-from config import COLOR_ERROR, COLOR_INFO, COLOR_SUCCESS, COLOR_WARN, PREFIX
+from config import (
+    COLOR_ERROR,
+    COLOR_INFO,
+    COLOR_SUCCESS,
+    COLOR_WARN,
+    PREFIX,
+    resolve_mod_log_channel_id,
+)
 from utils.db import (
     add_sentinel_incident,
     get_guild_settings,
@@ -131,7 +138,7 @@ class Sentinel(commands.Cog, name="Sentinel"):
 
         if channel is None:
             guild_settings = await get_guild_settings(guild.id) or {}
-            mod_log_id = guild_settings.get("mod_log_channel_id")
+            mod_log_id = resolve_mod_log_channel_id(guild_settings)
             channel = guild.get_channel(mod_log_id) if mod_log_id else None
 
         if channel:

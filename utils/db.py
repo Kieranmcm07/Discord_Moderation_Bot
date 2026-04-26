@@ -28,7 +28,9 @@ async def ensure_column(
 
 async def init_db():
     """Create all required tables and perform light schema upgrades."""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    db_directory = os.path.dirname(DB_PATH)
+    if db_directory:
+        os.makedirs(db_directory, exist_ok=True)
 
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
