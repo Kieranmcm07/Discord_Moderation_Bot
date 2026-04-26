@@ -162,11 +162,7 @@ class Configuration(commands.Cog, name="Configuration"):
         )
         embed.add_field(
             name="Sentinel",
-            value=(
-                "Enabled"
-                if sentinel_settings.get("enabled")
-                else "Disabled"
-            ),
+            value=("Enabled" if sentinel_settings.get("enabled") else "Disabled"),
             inline=True,
         )
         await ctx.send(embed=embed)

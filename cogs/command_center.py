@@ -198,9 +198,11 @@ class CommandCenter(commands.Cog, name="Command Center"):
             (
                 "Branding",
                 bool(settings.get("embed_color") or settings.get("embed_image_url")),
-                "Custom theme set"
-                if settings.get("embed_color") or settings.get("embed_image_url")
-                else "Default theme",
+                (
+                    "Custom theme set"
+                    if settings.get("embed_color") or settings.get("embed_image_url")
+                    else "Default theme"
+                ),
             ),
         ]
 
@@ -217,7 +219,9 @@ class CommandCenter(commands.Cog, name="Command Center"):
 
         return checks
 
-    async def health_score(self, guild: discord.Guild) -> tuple[int, list[tuple[str, bool, str]]]:
+    async def health_score(
+        self, guild: discord.Guild
+    ) -> tuple[int, list[tuple[str, bool, str]]]:
         checks = await self.health_checks(guild)
         passed = sum(1 for _, ok, _ in checks if ok)
         score = round((passed / len(checks)) * 100) if checks else 100
@@ -304,7 +308,9 @@ class CommandCenter(commands.Cog, name="Command Center"):
         for index, row in enumerate(top_voice, start=1):
             member = guild.get_member(row["user_id"])
             name = member.display_name if member else f"User {row['user_id']}"
-            voice_lines.append(f"{index}. {name} - {format_duration(row['minutes'] * 60)}")
+            voice_lines.append(
+                f"{index}. {name} - {format_duration(row['minutes'] * 60)}"
+            )
         embed.add_field(
             name="Top Voice",
             value="\n".join(voice_lines) if voice_lines else "No voice data",
@@ -330,7 +336,9 @@ class CommandCenter(commands.Cog, name="Command Center"):
         stickies = await get_all_sticky_messages(guild.id)
         reaction_roles = await get_reaction_roles(guild.id)
 
-        color = COLOR_SUCCESS if score >= 85 else COLOR_WARN if score >= 60 else COLOR_ERROR
+        color = (
+            COLOR_SUCCESS if score >= 85 else COLOR_WARN if score >= 60 else COLOR_ERROR
+        )
         embed = await make_embed(
             self.bot,
             guild=guild,
@@ -439,11 +447,19 @@ class CommandCenter(commands.Cog, name="Command Center"):
         top_voice = await get_top_voice(ctx.guild.id, 999)
 
         chat_rank = next(
-            (index + 1 for index, row in enumerate(top_chat) if row["user_id"] == member.id),
+            (
+                index + 1
+                for index, row in enumerate(top_chat)
+                if row["user_id"] == member.id
+            ),
             None,
         )
         voice_rank = next(
-            (index + 1 for index, row in enumerate(top_voice) if row["user_id"] == member.id),
+            (
+                index + 1
+                for index, row in enumerate(top_voice)
+                if row["user_id"] == member.id
+            ),
             None,
         )
 
@@ -538,9 +554,11 @@ class CommandCenter(commands.Cog, name="Command Center"):
 
         embed.add_field(
             name="Risk Notes",
-            value="\n".join(f"- {note}" for note in risk_notes)
-            if risk_notes
-            else "No obvious risk signals in the current data.",
+            value=(
+                "\n".join(f"- {note}" for note in risk_notes)
+                if risk_notes
+                else "No obvious risk signals in the current data."
+            ),
             inline=False,
         )
         await ctx.send(embed=embed)

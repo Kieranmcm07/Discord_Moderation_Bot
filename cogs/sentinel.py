@@ -117,9 +117,7 @@ class Sentinel(commands.Cog, name="Sentinel"):
 
         joined_at = getattr(message.author, "joined_at", None)
         if joined_at:
-            account_minutes = (
-                discord.utils.utcnow() - joined_at
-            ).total_seconds() / 60
+            account_minutes = (discord.utils.utcnow() - joined_at).total_seconds() / 60
             if account_minutes < 20 and score >= 35:
                 score += 15
                 reasons.append("very new server member")
@@ -287,7 +285,9 @@ class Sentinel(commands.Cog, name="Sentinel"):
             value=f"Use `{PREFIX}lock` on busy public channels if the wave continues.",
             inline=False,
         )
-        await self.send_sentinel_log(member.guild, embed, settings.get("log_channel_id"))
+        await self.send_sentinel_log(
+            member.guild, embed, settings.get("log_channel_id")
+        )
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -530,7 +530,9 @@ class Sentinel(commands.Cog, name="Sentinel"):
                 inline=False,
             )
         else:
-            embed.description = "No live behaviour has been observed for this member yet."
+            embed.description = (
+                "No live behaviour has been observed for this member yet."
+            )
 
         await ctx.send(embed=embed)
 
