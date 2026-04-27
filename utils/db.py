@@ -265,6 +265,40 @@ async def init_db():
             """
         )
 
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reminders (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id    INTEGER NOT NULL,
+                channel_id  INTEGER NOT NULL,
+                user_id     INTEGER NOT NULL,
+                message     TEXT NOT NULL,
+                due_at      TIMESTAMP NOT NULL,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        await db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS reminders_due_at_idx
+            ON reminders (due_at)
+            """
+        )
+
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS custom_commands (
+                guild_id      INTEGER NOT NULL,
+                name          TEXT NOT NULL,
+                response      TEXT NOT NULL,
+                created_by_id INTEGER NOT NULL,
+                created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (guild_id, name)
+            )
+            """
+        )
+
         await db.commit()
 
 
@@ -1151,6 +1185,128 @@ async def get_recent_sentinel_incidents(guild_id, limit=10) -> list[dict]:
         ) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
+
+
+async def add_reminder(guild_id, channel_id, user_id, message: str, due_at: str) -> int:
+    """Store a reminder and return its generated ID."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            """
+            INSERT INTO reminders (guild_id, channel_id, user_id, message, due_at)
+            VALUES (?,?,?,?,?)
+            """,
+            (guild_id, channel_id, user_id, message, due_at),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_due_reminders(now_iso: str, limit: int = 25) -> list[dict]:
+    """Return reminders that are ready to be delivered."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT * FROM reminders
+            WHERE due_at<=?
+            ORDER BY due_at ASC, id ASC
+            LIMIT ?
+            """,
+            (now_iso, limit),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def get_user_reminders(guild_id, user_id, limit: int = 10) -> list[dict]:
+    """Return active reminders created by one user in a guild."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT * FROM reminders
+            WHERE guild_id=? AND user_id=?
+            ORDER BY due_at ASC, id ASC
+            LIMIT ?
+            """,
+            (guild_id, user_id, limit),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def delete_reminder(guild_id, reminder_id: int, user_id: int | None = None) -> bool:
+    """Delete one reminder, optionally restricted to its creator."""
+    query = "DELETE FROM reminders WHERE guild_id=? AND id=?"
+    params: list = [guild_id, reminder_id]
+    if user_id is not None:
+        query += " AND user_id=?"
+        params.append(user_id)
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(query, params)
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def upsert_custom_command(
+    guild_id, name: str, response: str, created_by_id: int
+) -> None:
+    """Create or update a guild custom command."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO custom_commands (guild_id, name, response, created_by_id)
+            VALUES (?,?,?,?)
+            ON CONFLICT(guild_id, name) DO UPDATE SET
+            response=excluded.response,
+            updated_at=CURRENT_TIMESTAMP
+            """,
+            (guild_id, name, response, created_by_id),
+        )
+        await db.commit()
+
+
+async def get_custom_command(guild_id, name: str) -> dict | None:
+    """Return one custom command by name."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT * FROM custom_commands
+            WHERE guild_id=? AND name=?
+            """,
+            (guild_id, name),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def get_custom_commands(guild_id) -> list[dict]:
+    """Return all custom commands for one guild."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT * FROM custom_commands
+            WHERE guild_id=?
+            ORDER BY name COLLATE NOCASE ASC
+            """,
+            (guild_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def delete_custom_command(guild_id, name: str) -> bool:
+    """Delete one guild custom command."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "DELETE FROM custom_commands WHERE guild_id=? AND name=?",
+            (guild_id, name),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
 
 
 async def get_case_action_counts(guild_id, days: int = 7) -> list[dict]:

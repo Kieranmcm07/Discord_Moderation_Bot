@@ -20,7 +20,7 @@ import discord
 from discord.ext import commands
 
 from config import BOT_TOKEN, OWNER_IDS, PREFIX
-from utils.db import init_db
+from utils.db import get_custom_command, init_db
 from utils.embeds import decorate_embed, make_embed
 
 
@@ -138,6 +138,16 @@ def acquire_lock():
     LOCK_ACQUIRED = True
 
 
+def render_custom_response(template: str, ctx: commands.Context) -> str:
+    """Apply safe, simple placeholders to custom command responses."""
+    guild_name = ctx.guild.name if ctx.guild else "this server"
+    return (
+        template.replace("{user}", ctx.author.mention)
+        .replace("{username}", ctx.author.display_name)
+        .replace("{server}", guild_name)
+    )
+
+
 configure_logging()
 log = logging.getLogger("bot")
 atexit.register(release_lock)
@@ -190,11 +200,14 @@ class MyBot(commands.Bot):
             "cogs.activity",
             "cogs.sentinel",
             "cogs.command_center",
+            "cogs.custom_commands",
             "cogs.music",
             "cogs.server_management",
             "cogs.tickets",
             "cogs.configuration",
             "cogs.reaction_roles",
+            "cogs.reminders",
+            "cogs.utility",
             "cogs.fun",
             "cogs.help",
         ]
@@ -234,6 +247,12 @@ class MyBot(commands.Bot):
             attempted = (ctx.invoked_with or "").strip()
             if not attempted:
                 return
+
+            if ctx.guild:
+                custom = await get_custom_command(ctx.guild.id, attempted.lower())
+                if custom:
+                    await ctx.send(render_custom_response(custom["response"], ctx))
+                    return
 
             visible_commands = [
                 command

@@ -26,6 +26,9 @@ This project is especially suited to small and mid-sized servers that want:
 - Ticket system with category buttons, transcripts, staff roles, and private ticket channels
 - Sticky messages, autorole, polls, announcements, lock/unlock, and nickname tools
 - Reaction-role buttons so members can self-assign roles
+- Persistent reminders for staff follow-ups and personal task prompts
+- Custom server commands for reusable FAQ links, rules, and staff responses
+- Ping command for quick bot latency checks
 - Server branding for embeds with custom color plus an optional shared image or GIF
 - Custom help command grouped by feature area
 
@@ -225,6 +228,22 @@ Guild-specific customization is handled through commands such as:
 | `,rrlist`                       | List configured reaction roles              |
 | `,rrpanel [#channel]`           | Post the role button panel                  |
 
+### Reminders
+
+| Command                  | Description                    |
+| ------------------------ | ------------------------------ |
+| `,remind <time> <text>`  | Create a personal reminder     |
+| `,reminders`             | List your active reminders     |
+| `,delreminder <id>`      | Delete one of your reminders   |
+
+### Custom Commands
+
+| Command                       | Description                                |
+| ----------------------------- | ------------------------------------------ |
+| `,customadd <name> <response>` | Add or update a custom server command      |
+| `,customremove <name>`        | Remove a custom server command             |
+| `,customlist`                 | List this server's custom commands         |
+
 ### Fun
 
 | Command                        | Description                        |
@@ -262,6 +281,7 @@ Guild-specific customization is handled through commands such as:
 | ----------------- | -------------------------------------------------- |
 | `,help [command]` | Show grouped help or detailed help for one command |
 | `,help search <word>` | Search commands by name, alias, usage, or description |
+| `,ping`           | Check the bot's websocket latency                  |
 | `,invites`        | Show active invites in the server                  |
 
 ## Command Center
@@ -332,15 +352,18 @@ Recommended privileged intents:
 |   |-- cases.py
 |   |-- command_center.py
 |   |-- configuration.py
+|   |-- custom_commands.py
 |   |-- fun.py
 |   |-- help.py
 |   |-- invite_logger.py
 |   |-- moderation.py
 |   |-- music.py
 |   |-- reaction_roles.py
+|   |-- reminders.py
 |   |-- server_management.py
 |   |-- sentinel.py
-|   `-- tickets.py
+|   |-- tickets.py
+|   `-- utility.py
 |-- data/
 |-- utils/
 |   |-- db.py
@@ -356,8 +379,10 @@ Recommended privileged intents:
 
 - The bot stores its data in SQLite, by default at `data/bot.db`.
 - The custom help command is available with `,help`.
+- Custom command responses support `{user}`, `{username}`, and `{server}` placeholders.
 - Durations accept compact or readable formats, such as `30m`, `1h30m`, `2 hours`, and `7d`.
 - Temporary bans are automatically checked and lifted in the background while the bot is online.
+- Reminders are stored in SQLite and delivered after restarts when they become due.
 - Welcome and leave templates support `{user}`, `{username}`, `{server}`, and `{count}` placeholders.
 - Voice tracking is lightweight and only records time while the bot is running.
 
