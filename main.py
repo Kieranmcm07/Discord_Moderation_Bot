@@ -10,6 +10,7 @@ project easier to reason about.
 import argparse
 import asyncio
 import atexit
+import ctypes
 import difflib
 import json
 import logging
@@ -46,15 +47,73 @@ LOCK_FILE = Path(tempfile.gettempdir()) / "discord_mod_bot.lock"
 LOCK_ACQUIRED = False
 
 
+class ColoredFormatter(logging.Formatter):
+    """Add ANSI colors to console logs while keeping the file log plain."""
+
+    RESET = "\033[0m"
+    GREEN = "\033[92m"
+    BLUE = "\033[94m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    WHITE = "\033[97m"
+    DIM = "\033[90m"
+
+    LEVEL_COLORS = {
+        logging.DEBUG: DIM,
+        logging.INFO: GREEN,
+        logging.WARNING: YELLOW,
+        logging.ERROR: RED,
+        logging.CRITICAL: RED,
+    }
+
+    def format(self, record):
+        created = self.formatTime(record, self.datefmt)
+        level_color = self.LEVEL_COLORS.get(record.levelno, self.WHITE)
+        level = f"{level_color}[{record.levelname}]{self.RESET}"
+        name = f"{self.BLUE}{record.name}:{self.RESET}"
+        message = f"{self.WHITE}{record.getMessage()}{self.RESET}"
+        line = f"{self.GREEN}{created}{self.RESET} {level} {name} {message}"
+
+        if record.exc_info:
+            line = f"{line}\n{self.formatException(record.exc_info)}"
+        if record.stack_info:
+            line = f"{line}\n{self.formatStack(record.stack_info)}"
+        return line
+
+
+def enable_ansi():
+    """Enable ANSI colors in Windows consoles when possible."""
+    if os.name != "nt":
+        return
+
+    try:
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-11)
+        mode = ctypes.c_uint32()
+        if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            kernel32.SetConsoleMode(handle, mode.value | 0x0004)
+    except Exception:
+        pass
+
+
 def configure_logging():
     """Log to file every time, and to the console unless background mode is used."""
-    handlers = [logging.FileHandler("bot.log", encoding="utf-8")]
+    file_handler = logging.FileHandler("bot.log", encoding="utf-8")
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    )
+
+    handlers = [file_handler]
     if not ARGS.background:
-        handlers.append(logging.StreamHandler())
+        enable_ansi()
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(
+            ColoredFormatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+        )
+        handlers.append(console_handler)
 
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         handlers=handlers,
     )
 

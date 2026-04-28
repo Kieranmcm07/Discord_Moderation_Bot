@@ -4,7 +4,7 @@ title Restart Discord Moderation Bot
 cd /d "%~dp0"
 
 REM Restart is just stop first, then start again if stopping worked.
-call "%~dp0stop_bot.bat"
+call "%~dp0stop_bot.bat" /nopause
 set "STOP_EXIT=%ERRORLEVEL%"
 
 if not "%STOP_EXIT%"=="0" (

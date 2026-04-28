@@ -1,6 +1,21 @@
 @echo off
 setlocal
 title Stop Discord Moderation Bot
+color 0C
+cls
+
+set "PAUSE_ON_EXIT=1"
+if /I "%~1"=="/nopause" set "PAUSE_ON_EXIT=0"
+
+echo.
+echo      ____        _     _____                    _             _
+echo     ^| __ ^)  ___ ^| ^|_  ^|_   _^|__ _ __ _ __ ___ (_)_ __   __ _^| ^|_
+echo     ^|  _ \ / _ \^| __^|   ^| ^|/ _ \ '__^| '_ ` _ \^| ^| '_ \ / _` ^| __^|
+echo     ^| ^|_) ^| (_) ^| ^|_    ^| ^|  __/ ^|  ^| ^| ^| ^| ^| ^| ^| ^| ^| ^| (_^| ^| ^|_
+echo     ^|____/ \___/ \__^|   ^|_^|\___^|_^|  ^|_^| ^|_^| ^|_^|_^|_^| ^|_^|\__,_^|\__^|
+echo.
+echo     Termination sequence armed.
+echo.
 
 REM The bot writes this lock file on startup, so this script knows what to stop.
 set "LOCK_FILE=%TEMP%\discord_mod_bot.lock"
@@ -8,7 +23,7 @@ set "LOCK_FILE=%TEMP%\discord_mod_bot.lock"
 if not exist "%LOCK_FILE%" (
     echo No running bot lock file was found.
     echo If the bot is still running, stop it manually and then start it again once.
-    pause
+    if "%PAUSE_ON_EXIT%"=="1" pause
     exit /b 1
 )
 
@@ -24,7 +39,7 @@ for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass
 if not defined BOT_PID (
     echo Could not read a bot process ID from:
     echo %LOCK_FILE%
-    pause
+    if "%PAUSE_ON_EXIT%"=="1" pause
     exit /b 1
 )
 
@@ -32,7 +47,7 @@ tasklist /FI "PID eq %BOT_PID%" | find "%BOT_PID%" >nul
 if errorlevel 1 (
     echo The saved bot process is not running anymore.
     del "%LOCK_FILE%" >nul 2>&1
-    pause
+    if "%PAUSE_ON_EXIT%"=="1" pause
     exit /b 0
 )
 
@@ -42,11 +57,19 @@ if errorlevel 1 (
     taskkill /PID %BOT_PID% /T /F >nul 2>&1
     if errorlevel 1 (
         echo Failed to stop bot process %BOT_PID%.
-        pause
+        if "%PAUSE_ON_EXIT%"=="1" pause
         exit /b 1
     )
 )
 
-echo Bot process %BOT_PID% stopped.
+cls
+echo.
+echo      ____        _     _  ___ _ _          _
+echo     ^| __ ^)  ___ ^| ^|_  ^| ^|/ (_) ^| ^| ___  __^| ^|
+echo     ^|  _ \ / _ \^| __^| ^| ' / ^| ^| ^|/ _ \/ _` ^|
+echo     ^| ^|_) ^| (_) ^| ^|_  ^| . \ ^| ^| ^|  __/ (_^| ^|
+echo     ^|____/ \___/ \__^| ^|_^|\_\_^|_^|_^|\___^|\__,_^|
+echo.
+echo     Bot process %BOT_PID% stopped.
 del "%LOCK_FILE%" >nul 2>&1
-pause
+if "%PAUSE_ON_EXIT%"=="1" pause
