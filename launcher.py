@@ -17,11 +17,11 @@ BOOT_BANNER = r"""
    |  _ \(_)___  ___ ___  _ __ __| | | __ )  ___ | |_ 
    | | | | / __|/ __/ _ \| '__/ _` | |  _ \ / _ \| __|
    | |_| | \__ \ (_| (_) | | | (_| | | |_) | (_) | |_ 
-   |____/|_|___/\___\___/|_|  \__,_| |____/ \___/ \__|
+   |____/|_|___/\___\___/|_|  \__,_| |____/ \___/ \__|                                              
 
-        [ SYSTEM BOOT ]  initializing moderation core...
-        [ ACCESS NODE ]  loading guild security modules...
-        [ NETLINK    ]  connecting to Discord gateway...
+        [ SYSTEM BOOT ]  Initializing moderation core...
+        [ ACCESS NODE ]  Loading guild security modules...
+        [ NETLINK     ]  Connecting to Discord gateway...
 """
 
 SUCCESS_BANNER = r"""
@@ -29,18 +29,18 @@ SUCCESS_BANNER = r"""
     | __ )  ___ | |_   / _ \ _ __ | (_)_ __   ___ 
     |  _ \ / _ \| __| | | | | '_ \| | | '_ \ / _ \
     | |_) | (_) | |_  | |_| | | | | | | | | |  __/
-    |____/ \___/ \__|  \___/|_| |_|_|_|_| |_|\___|                       
+    |____/ \___/ \__|  \___/|_| |_|_|_|_| |_|\___|                                                                
 
         >>> ACCESS GRANTED
         >>> MODERATION SYSTEM ONLINE
 """
 
 FAIL_BANNER = r"""
-     ____        _     _____     _ _ 
-    | __ )  ___ | |_  |  ___|_ _(_) |
-    |  _ \ / _ \| __| | |_ / _` | | |
-    | |_) | (_) | |_  |  _| (_| | | |
-    |____/ \___/ \__| |_|  \__,_|_|_|                              
+     ____        _     _____     _ _          _ 
+    | __ )  ___ | |_  |  ___|_ _(_) | ___  __| |
+    |  _ \ / _ \| __| | |_ / _` | | |/ _ \/ _` |
+    | |_) | (_) | |_  |  _| (_| | | |  __/ (_| |
+    |____/ \___/ \__| |_|  \__,_|_|_|\___|\__,_|                                                                      
 """
 
 CREDITS_BANNER = r"""
