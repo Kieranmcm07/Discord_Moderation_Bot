@@ -2,6 +2,7 @@
 cogs/moderation.py - moderation commands and warn escalation rules.
 """
 
+# The main staff toolbox: actions, warnings, logs, and escalation.
 import asyncio
 import re
 from datetime import datetime, timedelta

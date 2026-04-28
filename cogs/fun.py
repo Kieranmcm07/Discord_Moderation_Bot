@@ -2,6 +2,7 @@
 cogs/fun.py - a few fun community commands.
 """
 
+# Nothing serious in here, just small commands to make the bot feel alive.
 import random
 from urllib.parse import quote
 
@@ -23,7 +24,7 @@ EIGHT_BALL_ANSWERS = [
     "Absolutely.",
 ]
 
-# These jokes are so ass ngl. lol
+# Keep these short and clean so they work in most community channels.
 JOKES = [
     (
         "Why did the moderator bring a ladder?",

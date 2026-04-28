@@ -5,6 +5,7 @@ The bot has enough commands now that grouping and presentation matter more than
 just dumping a plain command list.
 """
 
+# Keeping help readable matters because this bot has a lot of commands now.
 import discord
 from discord.ext import commands
 

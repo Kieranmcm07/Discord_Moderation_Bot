@@ -2,6 +2,7 @@
 cogs/server_management.py - utility commands for managing the server itself.
 """
 
+# General server tools live here so moderation.py does not become enormous.
 import asyncio
 from datetime import datetime
 

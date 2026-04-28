@@ -6,6 +6,7 @@ moderation, tickets, activity, and Sentinel data into staff dashboards that are
 quick to scan during real server work.
 """
 
+# This pulls useful bits from other systems into one staff-facing dashboard.
 from __future__ import annotations
 
 from datetime import datetime

@@ -5,6 +5,9 @@ Cases are one of the most useful moderation tools in the bot, so these
 commands aim to stay quick to scan during busy moderation sessions.
 """
 
+# Case history is the paper trail for staff actions.
+import csv
+import io
 from datetime import datetime
 
 import discord
@@ -195,6 +198,82 @@ class Cases(commands.Cog, name="Cases"):
             )
 
         await ctx.send(embed=embed)
+
+    @commands.command(
+        name="casefile",
+        aliases=["exportcases", "caseexport"],
+        help="Export a user's moderation history as a CSV file.",
+    )
+    @commands.has_permissions(kick_members=True)
+    async def casefile(
+        self,
+        ctx,
+        target: discord.Member | discord.User,
+        limit: int = 250,
+    ):
+        """Usage: ,casefile @user [limit]"""
+        limit = min(max(limit, 1), 500)
+        cases = await get_user_cases(ctx.guild.id, target.id)
+        if not cases:
+            embed = await make_embed(
+                self.bot,
+                guild=ctx.guild,
+                title="No Case History",
+                description=f"There are no cases to export for {target}.",
+                color=COLOR_INFO,
+            )
+            return await ctx.send(embed=embed)
+
+        selected_cases = cases[:limit]
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(
+            [
+                "case_id",
+                "action",
+                "user_id",
+                "moderator_id",
+                "moderator",
+                "reason",
+                "duration",
+                "created_at",
+            ]
+        )
+
+        for case in selected_cases:
+            moderator = self.bot.get_user(case["mod_id"])
+            writer.writerow(
+                [
+                    case["id"],
+                    get_action_label(case["action"]),
+                    case["user_id"],
+                    case["mod_id"],
+                    str(moderator) if moderator else "",
+                    format_case_reason(case),
+                    case["duration"] or "",
+                    case["created_at"],
+                ]
+            )
+
+        file_buffer = io.BytesIO(output.getvalue().encode("utf-8-sig"))
+        safe_name = "".join(
+            character
+            for character in target.name
+            if character.isalnum() or character in ("-", "_")
+        )
+        filename = f"casefile-{safe_name or target.id}-{target.id}.csv"
+        file = discord.File(file_buffer, filename=filename)
+
+        embed = await make_embed(
+            self.bot,
+            guild=ctx.guild,
+            title=f"Case File Export - {target}",
+            description=(
+                f"Exported **{len(selected_cases)}** of **{len(cases)}** case(s)."
+            ),
+            color=COLOR_MOD,
+        )
+        await ctx.send(embed=embed, file=file)
 
     @commands.command(
         name="recentcases",

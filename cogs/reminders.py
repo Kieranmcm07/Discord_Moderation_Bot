@@ -5,6 +5,7 @@ Reminders are stored in SQLite so they survive restarts, then delivered by a
 small background loop when they become due.
 """
 
+# Useful for staff follow-ups that would otherwise get forgotten.
 import re
 from datetime import timedelta
 

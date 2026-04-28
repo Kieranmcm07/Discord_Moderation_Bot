@@ -1,5 +1,4 @@
-# requirements.txt
-# install with: pip install -r requirements.txt
+# Stuff the bot needs to run. Install with: pip install -r requirements.txt
 
 discord.py>=2.3.0
 aiosqlite>=0.19.0

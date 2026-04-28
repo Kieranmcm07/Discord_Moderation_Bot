@@ -4,6 +4,7 @@ Users open tickets from a button panel, the bot creates a private channel,
 and staff can manage or close it with transcript logging.
 """
 
+# Tickets are a bigger feature, so the flow is kept in this one cog.
 from __future__ import annotations
 
 import asyncio

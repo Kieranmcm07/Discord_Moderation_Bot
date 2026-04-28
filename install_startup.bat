@@ -1,6 +1,7 @@
 @echo off
 setlocal
 
+REM Adds a Windows startup shortcut so the bot can come back after a PC restart.
 set "PROJECT_DIR=%~dp0"
 set "STARTUP_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 set "SHORTCUT_PATH=%STARTUP_DIR%\Discord Moderation Bot.lnk"

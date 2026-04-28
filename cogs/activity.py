@@ -5,6 +5,7 @@ Only aggregate counts are stored here. The bot does not save message content,
 which keeps this feature useful without feeling invasive.
 """
 
+# This cog is stats only, not message spying.
 from datetime import date, datetime
 
 import discord

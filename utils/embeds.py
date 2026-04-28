@@ -5,6 +5,7 @@ These helpers keep the bot's responses visually consistent without forcing each
 command to repeat the same thumbnail, footer, and optional image setup.
 """
 
+# If embeds look consistent, the whole bot feels more polished.
 from __future__ import annotations
 
 import discord

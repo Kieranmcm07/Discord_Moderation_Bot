@@ -1,5 +1,7 @@
 # Discord Moderation Bot
 
+<!-- This is my own Discord bot project, so the README stays practical instead of overly formal. -->
+
 A Discord bot focused on moderation, staff workflows, and day-to-day server utilities.
 It is built with `discord.py` and SQLite, so it is easy to run locally without extra services.
 
@@ -15,7 +17,7 @@ This project is especially suited to small and mid-sized servers that want:
 
 - Moderation commands for bans, softbans, tempbans, kicks, warns, timeouts, purge, clean, and slowmode
 - Warning escalation rules that can automatically timeout, kick, or ban after a threshold
-- Case tracking with history, recent cases, case search, and follow-up case comments
+- Case tracking with history, recent cases, case search, CSV exports, and follow-up case comments
 - Mission Control dashboard with setup health, tickets, moderation load, activity, and Sentinel status
 - Member 360 profiles that combine moderation, activity, account age, and live risk signals
 - Bot Doctor setup diagnosis for permissions, logs, tickets, Sentinel, branding, and autorole
@@ -133,6 +135,7 @@ Guild-specific customization is handled through commands such as:
 | ------------------------------- | ----------------------------------------------- |
 | `,case <id>`                    | Look up one case                                |
 | `,history @user`                | Show a user's moderation history                |
+| `,casefile @user [limit]`       | Export a user's moderation history as CSV       |
 | `,recentcases [limit]`          | Show recent moderation actions                  |
 | `,searchcases <query>`          | Search recent cases by action or reason text    |
 | `,casecomment <case_id> <note>` | Add a follow-up note linked to an existing case |
@@ -175,10 +178,21 @@ Guild-specific customization is handled through commands such as:
 | `,join`                 | Join your current voice channel      |
 | `,play <url or search>` | Play audio from a URL or search term |
 | `,queue`                | Show the music queue                 |
+| `,controls`             | Show interactive music controls      |
 | `,skip`                 | Skip the current track               |
 | `,pause`                | Pause the current track              |
 | `,resume`               | Resume the paused track              |
 | `,loop [on/off]`        | Repeat the current track             |
+| `,shuffle`              | Shuffle queued tracks                |
+| `,remove <position>`    | Remove a queued track                |
+| `,move <from> <to>`     | Move a queued track                  |
+| `,jump <position>`      | Skip ahead to a queued track         |
+| `,replay`               | Restart the current track            |
+| `,volume [0-200]`       | Show or set playback volume          |
+| `,filters`              | List available audio filters         |
+| `,filter <name>`        | Apply an audio filter                |
+| `,bassboost`            | Turn on bass boost                   |
+| `,chipmunk`             | Turn on the chipmunk filter          |
 | `,stop`                 | Stop playback and clear the queue    |
 | `,leave`                | Leave the current voice channel      |
 | `,nowplaying`           | Show the current track               |

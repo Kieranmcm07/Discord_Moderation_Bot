@@ -2,6 +2,7 @@
 setlocal
 title Stop Discord Moderation Bot
 
+REM The bot writes this lock file on startup, so this script knows what to stop.
 set "LOCK_FILE=%TEMP%\discord_mod_bot.lock"
 
 if not exist "%LOCK_FILE%" (

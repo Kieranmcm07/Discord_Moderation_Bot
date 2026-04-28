@@ -5,6 +5,7 @@ SQLite is a good fit for this project because it keeps setup simple while still
 handling the bot's moderation, ticket, and analytics data cleanly.
 """
 
+# Database helpers are kept async so commands do not block the bot.
 import os
 
 import aiosqlite

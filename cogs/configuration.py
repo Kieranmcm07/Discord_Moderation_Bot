@@ -5,6 +5,7 @@ These commands shape how the bot feels in each server: welcome messages, leave
 messages, embed theming, and the optional shared image or GIF for branded embeds.
 """
 
+# Server owners can tweak the bot here without editing code.
 import discord
 from discord.ext import commands
 

@@ -6,6 +6,7 @@ simple to run locally. Per-server customization still lives in the database and
 is managed through bot commands.
 """
 
+# Most values come from .env so I do not have to hard-code private stuff.
 import os
 
 from dotenv import load_dotenv

@@ -1,3 +1,6 @@
+"""Friendly Windows launcher for starting the bot without staring at a blank console."""
+
+# This is mostly quality-of-life for running my own bot from a double-click.
 import ctypes
 import json
 import os

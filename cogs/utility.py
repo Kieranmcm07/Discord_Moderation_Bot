@@ -1,5 +1,6 @@
 """Small utility commands."""
 
+# Tiny commands that do not need their own whole category.
 import discord
 from discord.ext import commands
 

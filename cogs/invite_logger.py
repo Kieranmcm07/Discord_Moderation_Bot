@@ -5,6 +5,7 @@ This cog gives moderators a quick picture of where members came from and whether
 an account looks brand new or more established.
 """
 
+# This is handy when staff need context around new joins.
 import discord
 from discord.ext import commands
 

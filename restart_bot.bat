@@ -3,6 +3,7 @@ setlocal
 title Restart Discord Moderation Bot
 cd /d "%~dp0"
 
+REM Restart is just stop first, then start again if stopping worked.
 call "%~dp0stop_bot.bat"
 set "STOP_EXIT=%ERRORLEVEL%"
 

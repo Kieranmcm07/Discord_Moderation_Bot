@@ -5,6 +5,7 @@ This feature gives members a clean way to opt into roles without needing staff
 to manage those role changes manually.
 """
 
+# Button roles are nicer than asking staff to hand out basic roles.
 from __future__ import annotations
 
 from datetime import datetime

@@ -5,6 +5,7 @@ Admins can create simple reusable responses such as ,rules, ,socials, or
 ,appeal without editing the bot code.
 """
 
+# These are deliberately simple: name in, saved response out.
 import re
 
 from discord.ext import commands

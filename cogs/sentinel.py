@@ -6,6 +6,7 @@ It is intentionally local and explainable: no external AI API, no hidden model,
 just transparent signals staff can act on.
 """
 
+# This is not magic moderation, just explainable pattern checks.
 import json
 import re
 from collections import defaultdict, deque

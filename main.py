@@ -6,6 +6,7 @@ global command errors. Keeping those pieces together makes the rest of the
 project easier to reason about.
 """
 
+# This is the one file I expect people to run directly.
 import argparse
 import asyncio
 import atexit
