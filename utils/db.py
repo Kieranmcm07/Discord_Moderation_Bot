@@ -300,6 +300,18 @@ async def init_db():
             """
         )
 
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS afk_statuses (
+                guild_id    INTEGER NOT NULL,
+                user_id     INTEGER NOT NULL,
+                reason      TEXT NOT NULL,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (guild_id, user_id)
+            )
+            """
+        )
+
         await db.commit()
 
 
@@ -1308,6 +1320,53 @@ async def delete_custom_command(guild_id, name: str) -> bool:
         )
         await db.commit()
         return cursor.rowcount > 0
+
+
+async def set_afk_status(guild_id, user_id, reason: str) -> None:
+    """Create or refresh one member's AFK status."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO afk_statuses (guild_id, user_id, reason)
+            VALUES (?,?,?)
+            ON CONFLICT(guild_id, user_id) DO UPDATE SET
+            reason=excluded.reason,
+            created_at=CURRENT_TIMESTAMP
+            """,
+            (guild_id, user_id, reason),
+        )
+        await db.commit()
+
+
+async def get_afk_status(guild_id, user_id) -> dict | None:
+    """Return a member's AFK status, if they have one."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT * FROM afk_statuses
+            WHERE guild_id=? AND user_id=?
+            """,
+            (guild_id, user_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def clear_afk_status(guild_id, user_id) -> dict | None:
+    """Delete and return a member's AFK status, if one existed."""
+    status = await get_afk_status(guild_id, user_id)
+    if not status:
+        return None
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM afk_statuses WHERE guild_id=? AND user_id=?",
+            (guild_id, user_id),
+        )
+        await db.commit()
+
+    return status
 
 
 async def get_case_action_counts(guild_id, days: int = 7) -> list[dict]:

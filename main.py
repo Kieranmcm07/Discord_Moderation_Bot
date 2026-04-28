@@ -291,6 +291,7 @@ class MyBot(commands.Bot):
             "cogs.configuration",
             "cogs.reaction_roles",
             "cogs.reminders",
+            "cogs.afk",
             "cogs.utility",
             "cogs.fun",
             "cogs.help",

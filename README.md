@@ -29,6 +29,7 @@ This project is especially suited to small and mid-sized servers that want:
 - Sticky messages, autorole, polls, announcements, lock/unlock, and nickname tools
 - Reaction-role buttons so members can self-assign roles
 - Persistent reminders for staff follow-ups and personal task prompts
+- AFK statuses with automatic mention notices and welcome-back clearing
 - Custom server commands for reusable FAQ links, rules, and staff responses
 - Ping command for quick bot latency checks
 - Server branding for embeds with custom color plus an optional shared image or GIF
@@ -249,6 +250,12 @@ Guild-specific customization is handled through commands such as:
 | `,remind <time> <text>`  | Create a personal reminder     |
 | `,reminders`             | List your active reminders     |
 | `,delreminder <id>`      | Delete one of your reminders   |
+
+### AFK
+
+| Command         | Description                                      |
+| --------------- | ------------------------------------------------ |
+| `,afk [reason]` | Mark yourself AFK until you send another message |
 
 ### Custom Commands
 
