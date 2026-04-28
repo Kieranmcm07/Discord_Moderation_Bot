@@ -228,8 +228,12 @@ class MyBot(commands.Bot):
 
     async def on_ready(self):
         """Log a clean ready message and refresh the public presence text."""
-        log.info("Logged in as %s (ID: %s)", self.user, self.user.id)
-        log.info("Serving %s guild(s)", len(self.guilds))
+        log.info(
+            "Bot online as %s (ID: %s). Serving %s guild(s).",
+            self.user,
+            self.user.id,
+            len(self.guilds),
+        )
         write_status(
             "ready",
             f"Logged in as {self.user} across {len(self.guilds)} guild(s)",

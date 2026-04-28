@@ -15,6 +15,6 @@ if not "%STOP_EXIT%"=="0" (
 )
 
 echo.
-echo Starting bot again...
+echo Starting Bot Again...
 call "%~dp0start_bot.bat"
 exit /b %ERRORLEVEL%
