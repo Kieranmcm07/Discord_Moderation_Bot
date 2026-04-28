@@ -158,7 +158,13 @@ def main():
         creation_flags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
 
     process = subprocess.Popen(
-        [python_exe, "main.py", "--background", "--status-file", str(status_file)],
+        [
+            python_exe,
+            str(project_dir / "main.py"),
+            "--background",
+            "--status-file",
+            str(status_file),
+        ],
         cwd=project_dir,
         creationflags=creation_flags,
         stdout=subprocess.DEVNULL,

@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 title Stop Discord Moderation Bot
 color 0C
 cls
@@ -18,48 +18,49 @@ echo.
 echo     Termination sequence armed.
 echo.
 
-REM The bot writes this lock file on startup, so this script knows what to stop.
+REM The bot writes this lock file on startup, and older launches can also be
+REM found by their Python command line.
 set "LOCK_FILE=%TEMP%\discord_mod_bot.lock"
 
-if not exist "%LOCK_FILE%" (
-    echo No running bot lock file was found.
-    echo If the bot is still running, stop it manually and then start it again once.
-    if "%PAUSE_ON_EXIT%"=="1" pause
-    exit /b 1
-)
-
+set "BOT_PIDS="
 for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$lockPath = Join-Path $env:TEMP 'discord_mod_bot.lock';" ^
-  "if (-not (Test-Path $lockPath)) { exit 1 }" ^
-  "$data = Get-Content -Raw -Path $lockPath | ConvertFrom-Json;" ^
-  "if ($null -eq $data.pid) { exit 1 }" ^
-  "[string]$data.pid"`) do (
-    set "BOT_PID=%%P"
+  "$ids = New-Object 'System.Collections.Generic.HashSet[int]';" ^
+  "if (Test-Path $lockPath) {" ^
+  "  try { $data = Get-Content -Raw -Path $lockPath | ConvertFrom-Json; if ($null -ne $data.pid) { [void]$ids.Add([int]$data.pid) } } catch {}" ^
+  "}" ^
+  "$project = (Resolve-Path '.').Path;" ^
+  "$escapedProject = [regex]::Escape($project);" ^
+  "$processes = Get-CimInstance Win32_Process -Filter 'name = ''pythonw.exe'' or name = ''python.exe''';" ^
+  "foreach ($process in $processes) {" ^
+  "  $commandLine = [string]$process.CommandLine;" ^
+  "  if ($commandLine -match ($escapedProject + '.*main\.py') -or $commandLine -match 'main\.py\s+--background\s+--status-file') { [void]$ids.Add([int]$process.ProcessId) }" ^
+  "}" ^
+  "$ids | Sort-Object"`) do (
+    set "BOT_PIDS=!BOT_PIDS! %%P"
 )
 
-if not defined BOT_PID (
-    echo Could not read a bot process ID from:
-    echo %LOCK_FILE%
+if not defined BOT_PIDS (
+    echo No running bot process was found.
     if "%PAUSE_ON_EXIT%"=="1" pause
     exit /b 1
 )
 
-tasklist /FI "PID eq %BOT_PID%" | find "%BOT_PID%" >nul
-if errorlevel 1 (
-    echo The saved bot process is not running anymore.
-    del "%LOCK_FILE%" >nul 2>&1
-    if "%PAUSE_ON_EXIT%"=="1" pause
-    exit /b 0
-)
-
-taskkill /PID %BOT_PID% /T >nul 2>&1
-if errorlevel 1 (
-    echo Bot process %BOT_PID% needs a force stop. Retrying...
-    taskkill /PID %BOT_PID% /T /F >nul 2>&1
-    if errorlevel 1 (
-        echo Failed to stop bot process %BOT_PID%.
-        if "%PAUSE_ON_EXIT%"=="1" pause
-        exit /b 1
+set "STOPPED_PIDS="
+for %%P in (%BOT_PIDS%) do (
+    tasklist /FI "PID eq %%P" | find "%%P" >nul
+    if not errorlevel 1 (
+        taskkill /PID %%P /T >nul 2>&1
+        if errorlevel 1 (
+            echo Bot process %%P needs a force stop. Retrying...
+            taskkill /PID %%P /T /F >nul 2>&1
+            if errorlevel 1 (
+                echo Failed to stop bot process %%P.
+                if "%PAUSE_ON_EXIT%"=="1" pause
+                exit /b 1
+            )
+        )
+        set "STOPPED_PIDS=!STOPPED_PIDS! %%P"
     )
 )
 
@@ -71,6 +72,6 @@ echo     ^|  _ \ / _ \^| __^| ^| ' /^| ^| ^| ^|/ _ \/ _` ^|
 echo     ^| ^|_) ^| (_) ^| ^|_  ^| . \^| ^| ^| ^|  __/ (_^| ^|
 echo     ^|____/ \___/ \__^| ^|_^|\_\_^|_^|_^|\___^|\__,_^|
 echo.                                      
-echo     Bot process %BOT_PID% stopped.
+echo     Bot process(es)%STOPPED_PIDS% stopped.
 del "%LOCK_FILE%" >nul 2>&1
 if "%PAUSE_ON_EXIT%"=="1" pause
