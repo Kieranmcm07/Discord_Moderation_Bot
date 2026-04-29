@@ -64,6 +64,21 @@ for %%P in (%BOT_PIDS%) do (
     )
 )
 
+for /L %%S in (1,1,15) do (
+    set "STILL_RUNNING="
+    for %%P in (!STOPPED_PIDS!) do (
+        tasklist /FI "PID eq %%P" | find "%%P" >nul
+        if not errorlevel 1 set "STILL_RUNNING=1"
+    )
+    if not defined STILL_RUNNING goto STOP_CONFIRMED
+    timeout /t 1 /nobreak >nul
+)
+
+echo Bot process(es)%STOPPED_PIDS% did not fully exit in time.
+if "%PAUSE_ON_EXIT%"=="1" pause
+exit /b 1
+
+:STOP_CONFIRMED
 cls
 echo.
 echo      ____        _     _  ___ _ _          _ 

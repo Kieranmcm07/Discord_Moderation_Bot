@@ -92,6 +92,61 @@ def read_status(path: Path):
         return None
 
 
+def pid_is_running(pid: int) -> bool:
+    """Return whether a process id currently appears to be alive."""
+    if pid <= 0:
+        return False
+
+    if os.name == "nt":
+        kernel32 = ctypes.windll.kernel32
+        process_query_limited_information = 0x1000
+        still_active = 259
+
+        handle = kernel32.OpenProcess(
+            process_query_limited_information,
+            False,
+            pid,
+        )
+        if not handle:
+            return False
+
+        try:
+            exit_code = ctypes.c_ulong()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return False
+            return exit_code.value == still_active
+        finally:
+            kernel32.CloseHandle(handle)
+
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def running_pid_from_lock(lock_file: Path):
+    """Read the bot lock file and return its pid if that process is running."""
+    try:
+        payload = json.loads(lock_file.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+
+    try:
+        pid = int(payload.get("pid", 0))
+    except (TypeError, ValueError):
+        pid = 0
+
+    if pid_is_running(pid):
+        return pid
+
+    try:
+        lock_file.unlink()
+    except FileNotFoundError:
+        pass
+    return None
+
+
 def find_pythonw():
     pythonw = Path(sys.executable).with_name("pythonw.exe")
     if pythonw.exists():
@@ -149,6 +204,17 @@ def main():
     log_file = project_dir / "bot.log"
     log_offset = log_file.stat().st_size if log_file.exists() else 0
     status_file = Path(tempfile.gettempdir()) / "discord_mod_bot_status.json"
+    lock_file = Path(tempfile.gettempdir()) / "discord_mod_bot.lock"
+
+    running_pid = running_pid_from_lock(lock_file)
+    if running_pid:
+        clear_screen()
+        print(paint(SUCCESS_BANNER, "92"))
+        print(paint(STAR_BANNER, "95"))
+        print(paint(f"Bot is already running with PID {running_pid}.", "92"))
+        time.sleep(2)
+        return 0
+
     if status_file.exists():
         status_file.unlink()
 
