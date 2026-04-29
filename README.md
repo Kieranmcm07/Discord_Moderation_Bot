@@ -26,6 +26,7 @@ This project is especially suited to small and mid-sized servers that want:
 - Sentinel live threat radar for explainable raid, spam, link flood, and mention storm detection
 - Activity tracking for chat and voice with leaderboards and per-user stats
 - Ticket system with category buttons, transcripts, staff roles, and private ticket channels
+- Case appeal panel with private appeal tickets and staff decision logging
 - Sticky messages, autorole, polls, announcements, lock/unlock, and nickname tools
 - Reaction-role buttons so members can self-assign roles
 - Persistent reminders for staff follow-ups and personal task prompts
@@ -295,6 +296,15 @@ Guild-specific customization is handled through commands such as:
 | `,ticketremove @user`                             | Remove a user from the ticket                      |
 | `,ticketrename <name>`                            | Rename the current ticket channel                  |
 | `,closeticket`                                    | Close the current ticket                           |
+
+### Appeals
+
+| Command                 | Description                                      |
+| ----------------------- | ------------------------------------------------ |
+| `,appealpanel [#channel]` | Post the case appeal panel                      |
+| `,appeal accept <note>` | Accept the current appeal and log the decision   |
+| `,appeal deny <note>`   | Deny the current appeal and log the decision     |
+| `,appeal close`         | Close the current appeal ticket                  |
 
 ### Other
 

@@ -288,6 +288,7 @@ class MyBot(commands.Bot):
             "cogs.music",
             "cogs.server_management",
             "cogs.tickets",
+            "cogs.appeals",
             "cogs.configuration",
             "cogs.reaction_roles",
             "cogs.reminders",
