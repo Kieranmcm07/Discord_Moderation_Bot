@@ -24,6 +24,7 @@ This project is especially suited to small and mid-sized servers that want:
 - Searchable help plus typo suggestions for close command names
 - Invite logging with join context and a basic account-age check
 - Deleted and edited message audit logs for staff review
+- Persistent AutoMod rules for blocked terms, invites, links, and mass mentions
 - Sentinel live threat radar for explainable raid, spam, link flood, and mention storm detection
 - Activity tracking for chat and voice with leaderboards and per-user stats
 - Ticket system with category buttons, transcripts, staff roles, and private ticket channels
@@ -173,6 +174,21 @@ Guild-specific customization is handled through commands such as:
 | `,sentinel autotimeout <seconds|off>` | Auto-timeout high-risk users               |
 | `,sentinelprofile @user`              | Show a member's live behaviour profile     |
 | `,sentinelincidents [limit]`          | Show recent Sentinel incident records      |
+
+### AutoMod
+
+| Command                          | Description                                  |
+| -------------------------------- | -------------------------------------------- |
+| `,automod`                       | Show AutoMod settings                        |
+| `,automod on`                    | Enable AutoMod                               |
+| `,automod off`                   | Disable AutoMod                              |
+| `,automod invites on/off`        | Delete Discord invite links                  |
+| `,automod links on/off`          | Delete external links                        |
+| `,automod mentions <number|off>` | Delete messages with too many mentions       |
+| `,automod warn on/off`           | Add warning cases when AutoMod deletes       |
+| `,automod addword <term>`        | Add a blocked word or phrase                 |
+| `,automod removeword <term>`     | Remove a blocked word or phrase              |
+| `,automod words`                 | List blocked words and phrases               |
 
 ### Music
 

@@ -315,6 +315,31 @@ async def init_db():
             """
         )
 
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS automod_settings (
+                guild_id             INTEGER PRIMARY KEY,
+                enabled              INTEGER NOT NULL DEFAULT 1,
+                delete_invites        INTEGER NOT NULL DEFAULT 1,
+                delete_links          INTEGER NOT NULL DEFAULT 0,
+                mass_mention_limit    INTEGER NOT NULL DEFAULT 6,
+                warn_on_trigger       INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS automod_blocked_terms (
+                guild_id    INTEGER NOT NULL,
+                term        TEXT NOT NULL,
+                created_by  INTEGER NOT NULL,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (guild_id, term)
+            )
+            """
+        )
+
         await db.commit()
 
 
@@ -1508,3 +1533,128 @@ async def get_sentinel_incident_count(guild_id, days: int = 7) -> int:
         ) as cursor:
             row = await cursor.fetchone()
             return int(row[0] or 0)
+
+
+async def get_automod_settings(guild_id) -> dict:
+    """Return AutoMod settings, using practical defaults before setup."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM automod_settings WHERE guild_id=?",
+            (guild_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+
+    if row:
+        return dict(row)
+
+    return {
+        "guild_id": guild_id,
+        "enabled": 1,
+        "delete_invites": 1,
+        "delete_links": 0,
+        "mass_mention_limit": 6,
+        "warn_on_trigger": 0,
+    }
+
+
+async def upsert_automod_settings(
+    guild_id,
+    *,
+    enabled=None,
+    delete_invites=None,
+    delete_links=None,
+    mass_mention_limit=None,
+    warn_on_trigger=None,
+):
+    """Create or update AutoMod settings without clearing untouched values."""
+    current = await get_automod_settings(guild_id)
+    values = {
+        "enabled": enabled if enabled is not None else current.get("enabled", 1),
+        "delete_invites": (
+            delete_invites
+            if delete_invites is not None
+            else current.get("delete_invites", 1)
+        ),
+        "delete_links": (
+            delete_links if delete_links is not None else current.get("delete_links", 0)
+        ),
+        "mass_mention_limit": (
+            mass_mention_limit
+            if mass_mention_limit is not None
+            else current.get("mass_mention_limit", 6)
+        ),
+        "warn_on_trigger": (
+            warn_on_trigger
+            if warn_on_trigger is not None
+            else current.get("warn_on_trigger", 0)
+        ),
+    }
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO automod_settings (
+                guild_id, enabled, delete_invites, delete_links,
+                mass_mention_limit, warn_on_trigger
+            ) VALUES (?,?,?,?,?,?)
+            ON CONFLICT(guild_id) DO UPDATE SET
+            enabled=excluded.enabled,
+            delete_invites=excluded.delete_invites,
+            delete_links=excluded.delete_links,
+            mass_mention_limit=excluded.mass_mention_limit,
+            warn_on_trigger=excluded.warn_on_trigger
+            """,
+            (
+                guild_id,
+                int(values["enabled"]),
+                int(values["delete_invites"]),
+                int(values["delete_links"]),
+                int(values["mass_mention_limit"]),
+                int(values["warn_on_trigger"]),
+            ),
+        )
+        await db.commit()
+
+
+async def add_automod_blocked_term(guild_id, term: str, created_by: int) -> bool:
+    """Add a blocked AutoMod term and report whether it was new."""
+    normalized = term.strip().lower()
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            """
+            INSERT OR IGNORE INTO automod_blocked_terms (guild_id, term, created_by)
+            VALUES (?,?,?)
+            """,
+            (guild_id, normalized, created_by),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def remove_automod_blocked_term(guild_id, term: str) -> bool:
+    """Remove a blocked AutoMod term and report whether it existed."""
+    normalized = term.strip().lower()
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "DELETE FROM automod_blocked_terms WHERE guild_id=? AND term=?",
+            (guild_id, normalized),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def get_automod_blocked_terms(guild_id) -> list[dict]:
+    """Return every blocked AutoMod term for a guild."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT * FROM automod_blocked_terms
+            WHERE guild_id=?
+            ORDER BY term COLLATE NOCASE ASC
+            """,
+            (guild_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]

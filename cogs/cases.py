@@ -39,6 +39,7 @@ ACTION_LABELS = {
     "untimeout": "Timeout Removed",
     "mute": "Mute",
     "unmute": "Unmute",
+    "automod": "AutoMod",
 }
 
 

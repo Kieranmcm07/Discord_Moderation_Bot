@@ -284,6 +284,7 @@ class MyBot(commands.Bot):
             "cogs.message_audit",
             "cogs.activity",
             "cogs.sentinel",
+            "cogs.automod",
             "cogs.command_center",
             "cogs.custom_commands",
             "cogs.music",

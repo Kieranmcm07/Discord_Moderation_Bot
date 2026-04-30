@@ -12,6 +12,7 @@ from discord.ext import commands
 from config import COLOR_ERROR, COLOR_SUCCESS, resolve_mod_log_channel_id
 from utils.db import (
     get_all_sticky_messages,
+    get_automod_settings,
     get_autorole,
     get_escalation_rules,
     get_guild_settings,
@@ -99,6 +100,7 @@ class Configuration(commands.Cog, name="Configuration"):
         ticket_settings = await get_ticket_settings(ctx.guild.id) or {}
         reaction_roles = await get_reaction_roles(ctx.guild.id)
         sentinel_settings = await get_sentinel_settings(ctx.guild.id)
+        automod_settings = await get_automod_settings(ctx.guild.id)
 
         embed = await make_embed(
             self.bot,
@@ -175,6 +177,11 @@ class Configuration(commands.Cog, name="Configuration"):
         embed.add_field(
             name="Sentinel",
             value=("Enabled" if sentinel_settings.get("enabled") else "Disabled"),
+            inline=True,
+        )
+        embed.add_field(
+            name="AutoMod",
+            value=("Enabled" if automod_settings.get("enabled") else "Disabled"),
             inline=True,
         )
         await ctx.send(embed=embed)
