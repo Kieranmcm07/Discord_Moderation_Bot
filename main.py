@@ -281,6 +281,7 @@ class MyBot(commands.Bot):
             "cogs.moderation",
             "cogs.cases",
             "cogs.invite_logger",
+            "cogs.message_audit",
             "cogs.activity",
             "cogs.sentinel",
             "cogs.command_center",

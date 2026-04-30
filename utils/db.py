@@ -227,6 +227,9 @@ async def init_db():
 
         await ensure_column(db, "guild_settings", "embed_image_url", "TEXT")
         await ensure_column(db, "guild_settings", "mod_log_channel_id", "INTEGER")
+        await ensure_column(
+            db, "guild_settings", "message_log_channel_id", "INTEGER"
+        )
 
         await db.execute(
             """
@@ -769,6 +772,7 @@ async def upsert_guild_settings(
     embed_color=None,
     embed_image_url=None,
     mod_log_channel_id=None,
+    message_log_channel_id=None,
 ):
     """Create or update the stored guild settings without losing untouched fields."""
     current = await get_guild_settings(guild_id) or {}
@@ -804,6 +808,11 @@ async def upsert_guild_settings(
             if mod_log_channel_id is not None
             else current.get("mod_log_channel_id")
         ),
+        "message_log_channel_id": (
+            message_log_channel_id
+            if message_log_channel_id is not None
+            else current.get("message_log_channel_id")
+        ),
     }
 
     async with aiosqlite.connect(DB_PATH) as db:
@@ -811,8 +820,9 @@ async def upsert_guild_settings(
             """
             INSERT INTO guild_settings (
                 guild_id, welcome_channel_id, leave_channel_id,
-                welcome_message, leave_message, embed_color, embed_image_url, mod_log_channel_id
-            ) VALUES (?,?,?,?,?,?,?,?)
+                welcome_message, leave_message, embed_color, embed_image_url,
+                mod_log_channel_id, message_log_channel_id
+            ) VALUES (?,?,?,?,?,?,?,?,?)
             ON CONFLICT(guild_id) DO UPDATE SET
             welcome_channel_id=excluded.welcome_channel_id,
             leave_channel_id=excluded.leave_channel_id,
@@ -820,7 +830,8 @@ async def upsert_guild_settings(
             leave_message=excluded.leave_message,
             embed_color=excluded.embed_color,
             embed_image_url=excluded.embed_image_url,
-            mod_log_channel_id=excluded.mod_log_channel_id
+            mod_log_channel_id=excluded.mod_log_channel_id,
+            message_log_channel_id=excluded.message_log_channel_id
             """,
             (
                 guild_id,
@@ -831,6 +842,7 @@ async def upsert_guild_settings(
                 values["embed_color"],
                 values["embed_image_url"],
                 values["mod_log_channel_id"],
+                values["message_log_channel_id"],
             ),
         )
         await db.commit()
@@ -848,6 +860,7 @@ async def remove_embed_image(guild_id):
         embed_color=current.get("embed_color"),
         embed_image_url="",
         mod_log_channel_id=current.get("mod_log_channel_id"),
+        message_log_channel_id=current.get("message_log_channel_id"),
     )
 
 
@@ -863,6 +876,23 @@ async def clear_mod_log_channel(guild_id):
         embed_color=current.get("embed_color"),
         embed_image_url=current.get("embed_image_url"),
         mod_log_channel_id=0,
+        message_log_channel_id=current.get("message_log_channel_id"),
+    )
+
+
+async def clear_message_log_channel(guild_id):
+    """Disable deleted and edited message logging for a guild."""
+    current = await get_guild_settings(guild_id) or {}
+    await upsert_guild_settings(
+        guild_id,
+        welcome_channel_id=current.get("welcome_channel_id"),
+        leave_channel_id=current.get("leave_channel_id"),
+        welcome_message=current.get("welcome_message"),
+        leave_message=current.get("leave_message"),
+        embed_color=current.get("embed_color"),
+        embed_image_url=current.get("embed_image_url"),
+        mod_log_channel_id=current.get("mod_log_channel_id"),
+        message_log_channel_id=0,
     )
 
 

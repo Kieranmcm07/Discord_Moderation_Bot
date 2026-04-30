@@ -23,6 +23,7 @@ This project is especially suited to small and mid-sized servers that want:
 - Bot Doctor setup diagnosis for permissions, logs, tickets, Sentinel, branding, and autorole
 - Searchable help plus typo suggestions for close command names
 - Invite logging with join context and a basic account-age check
+- Deleted and edited message audit logs for staff review
 - Sentinel live threat radar for explainable raid, spam, link flood, and mention storm detection
 - Activity tracking for chat and voice with leaderboards and per-user stats
 - Ticket system with category buttons, transcripts, staff roles, and private ticket channels
@@ -234,6 +235,12 @@ Guild-specific customization is handled through commands such as:
 | `,setembedcolor <hex>`         | Set the default embed color                    |
 | `,setembedimage <url>`         | Set a shared image or GIF for bot embeds       |
 | `,clearembedimage`             | Remove the shared image or GIF from bot embeds |
+| `,setmodlog #channel`          | Set the moderation action log channel          |
+| `,viewmodlog`                  | Show the moderation action log channel         |
+| `,clearmodlog`                 | Disable moderation action logs                 |
+| `,setmessagelog #channel`      | Set deleted and edited message audit logs      |
+| `,viewmessagelog`              | Show the message audit log channel             |
+| `,clearmessagelog`             | Disable message audit logs                     |
 
 ### Reaction Roles
 
@@ -387,6 +394,7 @@ Recommended privileged intents:
 |   |-- fun.py
 |   |-- help.py
 |   |-- invite_logger.py
+|   |-- message_audit.py
 |   |-- moderation.py
 |   |-- music.py
 |   |-- reaction_roles.py

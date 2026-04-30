@@ -18,6 +18,7 @@ from utils.db import (
     get_reaction_roles,
     get_sentinel_settings,
     get_ticket_settings,
+    clear_message_log_channel,
     clear_mod_log_channel,
     remove_embed_image,
     upsert_guild_settings,
@@ -134,6 +135,13 @@ class Configuration(commands.Cog, name="Configuration"):
             if mod_log_channel_id and ctx.guild.get_channel(mod_log_channel_id)
             else "Not set"
         )
+        message_log_channel_id = settings.get("message_log_channel_id")
+        message_log_channel = (
+            ctx.guild.get_channel(message_log_channel_id).mention
+            if message_log_channel_id
+            and ctx.guild.get_channel(message_log_channel_id)
+            else "Not set"
+        )
 
         embed.add_field(
             name="Welcome",
@@ -149,6 +157,9 @@ class Configuration(commands.Cog, name="Configuration"):
         embed.add_field(name="Embed Color", value=embed_color_value, inline=True)
         embed.add_field(name="Embed Image", value=embed_image_value, inline=False)
         embed.add_field(name="Mod Log Channel", value=mod_log_channel, inline=False)
+        embed.add_field(
+            name="Message Log Channel", value=message_log_channel, inline=False
+        )
         embed.add_field(name="Sticky Messages", value=str(len(stickies)), inline=True)
         embed.add_field(
             name="Escalation Rules", value=str(len(escalations)), inline=True
@@ -329,6 +340,72 @@ class Configuration(commands.Cog, name="Configuration"):
             guild=ctx.guild,
             title="Mod Log Cleared",
             description="Moderation logging has been disabled for this server.",
+            color=COLOR_SUCCESS,
+        )
+        await ctx.send(embed=embed)
+
+    @commands.command(
+        name="setmessagelog",
+        aliases=["messagelogchannel", "setauditlog"],
+        help="Set the channel used for deleted and edited message logs.",
+    )
+    @commands.has_permissions(manage_guild=True)
+    async def setmessagelog(self, ctx, channel: discord.TextChannel):
+        await upsert_guild_settings(ctx.guild.id, message_log_channel_id=channel.id)
+        embed = await make_embed(
+            self.bot,
+            guild=ctx.guild,
+            title="Message Log Updated",
+            description=(
+                f"Deleted and edited message logs will now be sent to {channel.mention}."
+            ),
+            color=COLOR_SUCCESS,
+        )
+        await ctx.send(embed=embed)
+
+    @commands.command(
+        name="viewmessagelog",
+        aliases=["messagelogstatus", "auditlogstatus"],
+        help="Show the current deleted and edited message log channel.",
+    )
+    @commands.has_permissions(manage_guild=True)
+    async def viewmessagelog(self, ctx):
+        settings = await get_guild_settings(ctx.guild.id) or {}
+        channel_id = settings.get("message_log_channel_id")
+        channel = ctx.guild.get_channel(channel_id) if channel_id else None
+
+        if not channel:
+            embed = await make_embed(
+                self.bot,
+                guild=ctx.guild,
+                title="Message Log",
+                description="No message log channel is configured.",
+                color=COLOR_ERROR,
+            )
+            return await ctx.send(embed=embed)
+
+        embed = await make_embed(
+            self.bot,
+            guild=ctx.guild,
+            title="Message Log",
+            description=f"Deleted and edited message logs are sent to {channel.mention}.",
+            color=COLOR_SUCCESS,
+        )
+        await ctx.send(embed=embed)
+
+    @commands.command(
+        name="clearmessagelog",
+        aliases=["removemessagelog", "clearauditlog"],
+        help="Disable deleted and edited message logging.",
+    )
+    @commands.has_permissions(manage_guild=True)
+    async def clearmessagelog(self, ctx):
+        await clear_message_log_channel(ctx.guild.id)
+        embed = await make_embed(
+            self.bot,
+            guild=ctx.guild,
+            title="Message Log Cleared",
+            description="Deleted and edited message logging has been disabled.",
             color=COLOR_SUCCESS,
         )
         await ctx.send(embed=embed)
