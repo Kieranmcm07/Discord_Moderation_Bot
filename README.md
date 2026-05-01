@@ -353,6 +353,44 @@ The Command Center is the bot's staff operations layer.
   branding, and autorole problems
 - `,member360` gives staff a complete member snapshot in one embed
 
+## Screenshots
+
+Screenshots are best taken from a private Discord test server using fake/test
+users and channels. Avoid showing real user IDs, private messages, bot tokens,
+or staff-only server information.
+
+Recommended screenshots:
+
+- `,missioncontrol` - the main staff dashboard
+- `,doctor` - setup and permission diagnosis
+- `,ticketpanel` - the ticket creation panel
+- `,member360 @user` - the staff member profile view
+- `,sentinel` - the live threat radar panel
+
+Suggested file layout:
+
+```text
+docs/
+`-- screenshots/
+    |-- mission-control.png
+    |-- bot-doctor.png
+    |-- ticket-panel.png
+    |-- member-360.png
+    `-- sentinel.png
+```
+
+The image files need to be committed to the repository for GitHub to display
+them. Save the screenshots into `docs/screenshots/`, commit them, and the README
+links will work on GitHub.
+
+Once screenshots are added, they can be embedded like this:
+
+```md
+![Mission Control](docs/screenshots/mission-control.png)
+![Bot Doctor](docs/screenshots/bot-doctor.png)
+![Ticket Panel](docs/screenshots/ticket-panel.png)
+```
+
 ## Sentinel Threat Radar
 
 Sentinel is a local, explainable detection layer for staff. It watches short live
