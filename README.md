@@ -404,6 +404,9 @@ Recommended privileged intents:
 .
 |-- cogs/
 |   |-- activity.py
+|   |-- afk.py
+|   |-- appeals.py
+|   |-- automod.py
 |   |-- cases.py
 |   |-- command_center.py
 |   |-- configuration.py
