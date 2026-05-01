@@ -37,6 +37,7 @@ This project is especially suited to small and mid-sized servers that want:
 - Ping command for quick bot latency checks
 - Server branding for embeds with custom color plus an optional shared image or GIF
 - Custom help command grouped by feature area
+- About/credits command with creator and GitHub links
 
 ## Setup
 

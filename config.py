@@ -43,6 +43,11 @@ OWNER_IDS = [
     if value.strip().isdigit()
 ]
 
+# Public project links shown by bot info and credits commands.
+PROJECT_CREATOR = "Kieranmcm07"
+GITHUB_PROFILE_URL = "https://github.com/Kieranmcm07"
+PROJECT_REPO_URL = "https://github.com/Kieranmcm07/Discord_Moderation_Bot"
+
 # Database path.
 DB_PATH = os.getenv("DB_PATH", "data/bot.db")
 

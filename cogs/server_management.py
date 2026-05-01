@@ -9,7 +9,14 @@ from datetime import datetime
 import discord
 from discord.ext import commands
 
-from config import COLOR_ERROR, COLOR_INFO, COLOR_SUCCESS
+from config import (
+    COLOR_ERROR,
+    COLOR_INFO,
+    COLOR_SUCCESS,
+    GITHUB_PROFILE_URL,
+    PROJECT_CREATOR,
+    PROJECT_REPO_URL,
+)
 from utils.db import (
     clear_autorole,
     clear_sticky_message,
@@ -755,6 +762,16 @@ class ServerManagement(commands.Cog, name="Server Management"):
         embed.add_field(name="Cogs", value=str(len(bot.cogs)), inline=True)
         embed.add_field(name="Commands", value=str(len(bot.commands)), inline=True)
         embed.add_field(name="Library", value="discord.py 2.x", inline=True)
+        embed.add_field(
+            name="Creator",
+            value=f"[{PROJECT_CREATOR}]({GITHUB_PROFILE_URL})",
+            inline=True,
+        )
+        embed.add_field(
+            name="Source",
+            value=f"[GitHub Repository]({PROJECT_REPO_URL})",
+            inline=True,
+        )
         await ctx.send(embed=embed)
 
 
