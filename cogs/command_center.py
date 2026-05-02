@@ -46,6 +46,7 @@ from utils.db import (
     get_warn_count,
 )
 from utils.embeds import make_embed
+from utils.time import unix_timestamp
 
 
 ACTION_LABELS = {
@@ -393,13 +394,14 @@ class CommandCenter(commands.Cog, name="Command Center"):
         for ticket in tickets[:12]:
             channel = guild.get_channel(ticket["channel_id"])
             owner = guild.get_member(ticket["user_id"])
-            created = int(datetime.fromisoformat(ticket["created_at"]).timestamp())
+            created = unix_timestamp(ticket["created_at"])
+            opened = f"<t:{created}:R>" if created else "Unknown"
             embed.add_field(
                 name=f"Ticket #{ticket['id']} - {ticket['category_name']}",
                 value=(
                     f"Owner: {owner.mention if owner else ticket['user_id']}\n"
                     f"Channel: {channel.mention if channel else ticket['channel_id']}\n"
-                    f"Opened: <t:{created}:R>"
+                    f"Opened: {opened}"
                 ),
                 inline=False,
             )

@@ -107,7 +107,7 @@ class ServerManagement(commands.Cog, name="Server Management"):
 
         try:
             await member.add_roles(role, reason="Automatic role assignment")
-        except discord.Forbidden:
+        except (discord.Forbidden, discord.HTTPException):
             return
 
     @commands.Cog.listener()

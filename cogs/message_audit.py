@@ -5,6 +5,8 @@ This cog keeps lightweight, server-configurable message visibility for staff
 without storing message content in the database.
 """
 
+import logging
+
 import discord
 from discord.ext import commands
 
@@ -13,6 +15,7 @@ from utils.db import get_guild_settings
 
 
 MAX_FIELD_LENGTH = 1024
+log = logging.getLogger(__name__)
 
 
 def short_text(value: str | None, limit: int = MAX_FIELD_LENGTH) -> str:
@@ -34,10 +37,11 @@ def attachment_summary(message: discord.Message) -> str | None:
     if not message.attachments:
         return None
 
-    return "\n".join(
+    summary = "\n".join(
         f"[{attachment.filename}]({attachment.url})"
         for attachment in message.attachments[:5]
     )
+    return short_text(summary)
 
 
 class MessageAudit(commands.Cog, name="Message Audit"):
@@ -87,7 +91,14 @@ class MessageAudit(commands.Cog, name="Message Audit"):
         embed.set_footer(
             text=f"User ID: {message.author.id} | Message ID: {message.id}"
         )
-        await log_channel.send(embed=embed)
+        try:
+            await log_channel.send(embed=embed)
+        except (discord.Forbidden, discord.HTTPException):
+            log.warning(
+                "Could not send deleted-message audit log in guild %s.",
+                message.guild.id,
+                exc_info=True,
+            )
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
@@ -116,7 +127,14 @@ class MessageAudit(commands.Cog, name="Message Audit"):
         embed.add_field(name="Before", value=short_text(before.content), inline=False)
         embed.add_field(name="After", value=short_text(after.content), inline=False)
         embed.set_footer(text=f"User ID: {before.author.id} | Message ID: {before.id}")
-        await log_channel.send(embed=embed)
+        try:
+            await log_channel.send(embed=embed)
+        except (discord.Forbidden, discord.HTTPException):
+            log.warning(
+                "Could not send edited-message audit log in guild %s.",
+                before.guild.id,
+                exc_info=True,
+            )
 
 
 async def setup(bot):

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
 import re
 from datetime import datetime
 
@@ -31,6 +32,9 @@ from utils.db import (
     remove_ticket_role,
     upsert_ticket_settings,
 )
+
+
+log = logging.getLogger(__name__)
 
 
 def slugify(value: str) -> str:
@@ -151,6 +155,13 @@ class Tickets(commands.Cog, name="Tickets"):
         categories = await get_ticket_categories(guild_id)
         return next((item for item in categories if item["id"] == category_id), None)
 
+    async def _send_ephemeral(
+        self, interaction: discord.Interaction, message: str
+    ):
+        if interaction.response.is_done():
+            return await interaction.followup.send(message, ephemeral=True)
+        return await interaction.response.send_message(message, ephemeral=True)
+
     async def _build_transcript(self, channel: discord.TextChannel) -> discord.File:
         lines = [f"Transcript for #{channel.name}", ""]
 
@@ -202,16 +213,26 @@ class Tickets(commands.Cog, name="Tickets"):
             embed.add_field(name="Ticket ID", value=f"#{ticket['id']}", inline=True)
             embed.add_field(name="Category", value=ticket["category_name"], inline=True)
 
-        await log_channel.send(embed=embed, file=file)
+        try:
+            await log_channel.send(embed=embed, file=file)
+        except (discord.Forbidden, discord.HTTPException):
+            log.warning(
+                "Could not send ticket log in guild %s to channel %s.",
+                guild.id,
+                settings["log_channel_id"],
+                exc_info=True,
+            )
 
     async def handle_ticket_create(
         self, interaction: discord.Interaction, category: dict
     ):
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
-            return await interaction.response.send_message(
+            return await self._send_ephemeral(
+                interaction,
                 "Tickets can only be created inside a server.",
-                ephemeral=True,
             )
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
         lock_key = (interaction.guild.id, interaction.user.id)
         ticket_lock = self._ticket_creation_locks.setdefault(lock_key, asyncio.Lock())
 
@@ -222,23 +243,23 @@ class Tickets(commands.Cog, name="Tickets"):
                     category["id"],
                 )
                 if not live_category:
-                    return await interaction.response.send_message(
+                    return await self._send_ephemeral(
+                        interaction,
                         "That ticket button is no longer active. Ask a staff member to post a fresh ticket panel.",
-                        ephemeral=True,
                     )
 
                 settings = await get_ticket_settings(interaction.guild.id)
                 if not settings or not settings.get("category_id"):
-                    return await interaction.response.send_message(
+                    return await self._send_ephemeral(
+                        interaction,
                         "Ticket setup is incomplete. Ask an admin to set a ticket category first.",
-                        ephemeral=True,
                     )
 
                 ticket_parent = interaction.guild.get_channel(settings["category_id"])
                 if not isinstance(ticket_parent, discord.CategoryChannel):
-                    return await interaction.response.send_message(
+                    return await self._send_ephemeral(
+                        interaction,
                         "The configured ticket category no longer exists.",
-                        ephemeral=True,
                     )
 
                 existing = await get_open_ticket_for_user(
@@ -264,16 +285,16 @@ class Tickets(commands.Cog, name="Tickets"):
                         if existing_channel
                         else f"`{existing['channel_id']}`"
                     )
-                    return await interaction.response.send_message(
+                    return await self._send_ephemeral(
+                        interaction,
                         f"You already have an open ticket: {mention}",
-                        ephemeral=True,
                     )
 
                 me = interaction.guild.me
                 if me is None:
-                    return await interaction.response.send_message(
+                    return await self._send_ephemeral(
+                        interaction,
                         "I am not ready yet. Try again in a moment.",
-                        ephemeral=True,
                     )
 
                 staff_roles = await self._get_staff_roles(interaction.guild)
@@ -340,9 +361,9 @@ class Tickets(commands.Cog, name="Tickets"):
                         if existing_channel
                         else "your existing ticket"
                     )
-                    return await interaction.response.send_message(
+                    return await self._send_ephemeral(
+                        interaction,
                         f"You already have an open ticket: {mention}",
-                        ephemeral=True,
                     )
 
                 ticket = await get_ticket_by_channel(channel.id)
@@ -384,9 +405,9 @@ class Tickets(commands.Cog, name="Tickets"):
                 staff_ping = " ".join(role.mention for role in staff_roles)
                 await channel.send(content=staff_ping or None, embed=embed, view=view)
 
-                await interaction.response.send_message(
+                await self._send_ephemeral(
+                    interaction,
                     f"Your ticket has been created: {channel.mention}",
-                    ephemeral=True,
                 )
 
                 await self._log_ticket_event(

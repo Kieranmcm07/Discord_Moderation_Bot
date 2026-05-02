@@ -6,6 +6,7 @@ small background loop when they become due.
 """
 
 # Useful for staff follow-ups that would otherwise get forgotten.
+import logging
 import re
 from datetime import timedelta
 
@@ -21,6 +22,8 @@ from utils.db import (
 )
 from utils.embeds import make_embed
 
+
+log = logging.getLogger(__name__)
 
 DURATION_PART = re.compile(
     r"(?P<amount>\d+)\s*(?P<unit>seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|w)",
@@ -134,7 +137,11 @@ class Reminders(commands.Cog, name="Reminders"):
     async def reminder_loop(self):
         due = await get_due_reminders(discord.utils.utcnow().isoformat())
         for reminder in due:
-            await self.deliver_reminder(reminder)
+            try:
+                await self.deliver_reminder(reminder)
+            except Exception:
+                log.exception("Failed to deliver reminder %s", reminder["id"])
+                continue
             await delete_reminder(reminder["guild_id"], reminder["id"])
 
     @reminder_loop.before_loop
@@ -150,6 +157,13 @@ class Reminders(commands.Cog, name="Reminders"):
                 user = await self.bot.fetch_user(reminder["user_id"])
             except discord.NotFound:
                 return
+            except discord.HTTPException:
+                log.warning(
+                    "Could not fetch reminder user %s.",
+                    reminder["user_id"],
+                    exc_info=True,
+                )
+                raise
 
         embed = await make_embed(
             self.bot,
@@ -166,12 +180,12 @@ class Reminders(commands.Cog, name="Reminders"):
             try:
                 await channel.send(content=user.mention, embed=embed)
                 return
-            except discord.Forbidden:
+            except (discord.Forbidden, discord.HTTPException):
                 pass
 
         try:
             await user.send(embed=embed)
-        except discord.Forbidden:
+        except (discord.Forbidden, discord.HTTPException):
             pass
 
     @commands.command(

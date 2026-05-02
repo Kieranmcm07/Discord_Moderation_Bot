@@ -8,6 +8,7 @@ just transparent signals staff can act on.
 
 # This is not magic moderation, just explainable pattern checks.
 import json
+import logging
 import re
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
@@ -31,6 +32,10 @@ from utils.db import (
     upsert_sentinel_settings,
 )
 from utils.embeds import make_embed
+from utils.time import unix_timestamp
+
+
+log = logging.getLogger(__name__)
 
 
 LINK_PATTERN = re.compile(
@@ -141,7 +146,14 @@ class Sentinel(commands.Cog, name="Sentinel"):
             channel = guild.get_channel(mod_log_id) if mod_log_id else None
 
         if channel:
-            await channel.send(embed=embed)
+            try:
+                await channel.send(embed=embed)
+            except (discord.Forbidden, discord.HTTPException):
+                log.warning(
+                    "Could not send Sentinel log in guild %s.",
+                    guild.id,
+                    exc_info=True,
+                )
 
     async def create_message_incident(
         self,
@@ -577,13 +589,14 @@ class Sentinel(commands.Cog, name="Sentinel"):
                 reasons = json.loads(incident["reasons"])
             except json.JSONDecodeError:
                 reasons = [incident["reasons"]]
-            timestamp = int(datetime.fromisoformat(incident["created_at"]).timestamp())
+            timestamp = unix_timestamp(incident["created_at"])
+            when = f"<t:{timestamp}:R>" if timestamp else "Unknown"
             embed.add_field(
                 name=f"#{incident['id']} - {incident['score']}/100",
                 value=(
                     f"Member: {member.mention if member else incident['user_id'] or 'Join wave'}\n"
                     f"Channel: {channel.mention if channel else 'N/A'}\n"
-                    f"When: <t:{timestamp}:R>\n"
+                    f"When: {when}\n"
                     f"Signal: {reasons[0] if reasons else 'No reason stored'}"
                 ),
                 inline=False,

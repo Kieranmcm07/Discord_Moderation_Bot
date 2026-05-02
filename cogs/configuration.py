@@ -6,6 +6,8 @@ messages, embed theming, and the optional shared image or GIF for branded embeds
 """
 
 # Server owners can tweak the bot here without editing code.
+import logging
+
 import discord
 from discord.ext import commands
 
@@ -25,6 +27,9 @@ from utils.db import (
     upsert_guild_settings,
 )
 from utils.embeds import make_embed
+
+
+log = logging.getLogger(__name__)
 
 
 def render_template(template: str, member: discord.Member) -> str:
@@ -64,7 +69,14 @@ class Configuration(commands.Cog, name="Configuration"):
             description=render_template(message_template, member),
         )
         embed.set_author(name=str(member), icon_url=member.display_avatar.url)
-        await channel.send(embed=embed)
+        try:
+            await channel.send(embed=embed)
+        except (discord.Forbidden, discord.HTTPException):
+            log.warning(
+                "Could not send welcome message in guild %s.",
+                member.guild.id,
+                exc_info=True,
+            )
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
@@ -87,7 +99,14 @@ class Configuration(commands.Cog, name="Configuration"):
             description=render_template(message_template, member),
         )
         embed.set_author(name=str(member), icon_url=member.display_avatar.url)
-        await channel.send(embed=embed)
+        try:
+            await channel.send(embed=embed)
+        except (discord.Forbidden, discord.HTTPException):
+            log.warning(
+                "Could not send leave message in guild %s.",
+                member.guild.id,
+                exc_info=True,
+            )
 
     @commands.command(name="settings", help="Show the current server configuration.")
     @commands.has_permissions(manage_guild=True)
@@ -131,6 +150,8 @@ class Configuration(commands.Cog, name="Configuration"):
             f"`#{embed_color:06X}`" if embed_color is not None else "Default"
         )
         embed_image_value = settings.get("embed_image_url") or "Not set"
+        if len(embed_image_value) > 1000:
+            embed_image_value = f"{embed_image_value[:997]}..."
         mod_log_channel_id = resolve_mod_log_channel_id(settings)
         mod_log_channel = (
             ctx.guild.get_channel(mod_log_channel_id).mention

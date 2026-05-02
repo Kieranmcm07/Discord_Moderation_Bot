@@ -6,6 +6,8 @@ an account looks brand new or more established.
 """
 
 # This is handy when staff need context around new joins.
+import logging
+
 import discord
 from discord.ext import commands
 
@@ -18,6 +20,9 @@ from config import (
 )
 from utils.db import log_member_event, upsert_invite
 from utils.embeds import make_embed
+
+
+log = logging.getLogger(__name__)
 
 
 class InviteLogger(commands.Cog, name="Invite Logger"):
@@ -49,6 +54,8 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
                 )
         except discord.Forbidden:
             pass
+        except discord.HTTPException:
+            log.warning("Could not cache invites for guild %s.", guild.id, exc_info=True)
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
@@ -62,6 +69,9 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
         try:
             current_invites = await guild.invites()
         except discord.Forbidden:
+            current_invites = []
+        except discord.HTTPException:
+            log.warning("Could not read invites for guild %s.", guild.id, exc_info=True)
             current_invites = []
 
         for invite in current_invites:
@@ -120,12 +130,24 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
         if JOIN_LOG_CHANNEL_ID:
             join_channel = guild.get_channel(JOIN_LOG_CHANNEL_ID)
             if join_channel:
-                await join_channel.send(embed=embed)
+                try:
+                    await join_channel.send(embed=embed)
+                except (discord.Forbidden, discord.HTTPException):
+                    log.warning(
+                        "Could not send join log in guild %s.", guild.id, exc_info=True
+                    )
 
         if INVITE_LOG_CHANNEL_ID and INVITE_LOG_CHANNEL_ID != JOIN_LOG_CHANNEL_ID:
             invite_channel = guild.get_channel(INVITE_LOG_CHANNEL_ID)
             if invite_channel:
-                await invite_channel.send(embed=embed)
+                try:
+                    await invite_channel.send(embed=embed)
+                except (discord.Forbidden, discord.HTTPException):
+                    log.warning(
+                        "Could not send invite log in guild %s.",
+                        guild.id,
+                        exc_info=True,
+                    )
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
@@ -158,7 +180,10 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
             inline=True,
         )
         embed.add_field(name="Member Count", value=str(guild.member_count), inline=True)
-        await channel.send(embed=embed)
+        try:
+            await channel.send(embed=embed)
+        except (discord.Forbidden, discord.HTTPException):
+            log.warning("Could not send leave log in guild %s.", guild.id, exc_info=True)
 
     @commands.Cog.listener()
     async def on_invite_create(self, invite: discord.Invite):

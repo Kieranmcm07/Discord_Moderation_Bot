@@ -8,7 +8,6 @@ commands aim to stay quick to scan during busy moderation sessions.
 # Case history is the paper trail for staff actions.
 import csv
 import io
-from datetime import datetime
 
 import discord
 from discord.ext import commands
@@ -24,6 +23,7 @@ from utils.db import (
     update_case_reason,
 )
 from utils.embeds import make_embed
+from utils.time import parse_db_timestamp, unix_timestamp
 
 
 ACTION_LABELS = {
@@ -83,7 +83,7 @@ class Cases(commands.Cog, name="Cases"):
             guild=ctx.guild,
             title=f"Case #{case_id} - {get_action_label(data['action'])}",
             color=COLOR_MOD,
-            timestamp=datetime.fromisoformat(data["created_at"]),
+            timestamp=parse_db_timestamp(data["created_at"]),
         )
 
         target = self.bot.get_user(data["user_id"]) or f"Unknown ({data['user_id']})"
@@ -128,14 +128,16 @@ class Cases(commands.Cog, name="Cases"):
         for case in data[:15]:
             moderator = self.bot.get_user(case["mod_id"]) or f"ID: {case['mod_id']}"
             reason = format_case_reason(case)
+            timestamp = unix_timestamp(case["created_at"])
             if len(reason) > 100:
                 reason = f"{reason[:97]}..."
+            date_text = f"<t:{timestamp}:D>" if timestamp else "Unknown"
             embed.add_field(
                 name=f"#{case['id']} - {get_action_label(case['action'])}",
                 value=(
                     f"**Mod:** {moderator}\n"
                     f"**Reason:** {reason}\n"
-                    f"**Date:** <t:{int(datetime.fromisoformat(case['created_at']).timestamp())}:D>"
+                    f"**Date:** {date_text}"
                 ),
                 inline=False,
             )
@@ -156,6 +158,9 @@ class Cases(commands.Cog, name="Cases"):
         cases = await get_user_cases(ctx.guild.id, target.id)
         warn_count = await get_warn_count(ctx.guild.id, target.id)
         active_tempban = await get_active_temp_ban(ctx.guild.id, target.id)
+        active_tempban_timestamp = (
+            unix_timestamp(active_tempban["expires_at"]) if active_tempban else None
+        )
 
         embed = await make_embed(
             self.bot,
@@ -170,8 +175,8 @@ class Cases(commands.Cog, name="Cases"):
         embed.add_field(
             name="Temp Ban",
             value=(
-                f"Active until <t:{int(datetime.fromisoformat(active_tempban['expires_at']).timestamp())}:F>"
-                if active_tempban
+                f"Active until <t:{active_tempban_timestamp}:F>"
+                if active_tempban_timestamp
                 else "Not active"
             ),
             inline=False,

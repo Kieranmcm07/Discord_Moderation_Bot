@@ -3,6 +3,7 @@ cogs/automod.py - persistent server-level message filtering.
 """
 
 # AutoMod handles deterministic rules; Sentinel handles live behaviour patterns.
+import logging
 import re
 from datetime import datetime
 
@@ -29,6 +30,8 @@ from utils.db import (
 )
 from utils.embeds import make_embed
 
+
+log = logging.getLogger(__name__)
 
 INVITE_PATTERN = re.compile(
     r"(discord(?:app)?\.com/invite/\S+|discord\.gg/\S+)",
@@ -71,7 +74,14 @@ class AutoMod(commands.Cog, name="AutoMod"):
         channel_id = resolve_mod_log_channel_id(settings)
         channel = guild.get_channel(channel_id) if channel_id else None
         if channel:
-            await channel.send(embed=embed)
+            try:
+                await channel.send(embed=embed)
+            except (discord.Forbidden, discord.HTTPException):
+                log.warning(
+                    "Could not send AutoMod log in guild %s.",
+                    guild.id,
+                    exc_info=True,
+                )
 
     def detect_triggers(
         self,
@@ -146,7 +156,7 @@ class AutoMod(commands.Cog, name="AutoMod"):
                     color=COLOR_MOD,
                 )
             )
-        except discord.Forbidden:
+        except (discord.Forbidden, discord.HTTPException):
             pass
 
     @commands.Cog.listener()

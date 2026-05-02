@@ -4,6 +4,7 @@ cogs/moderation.py - moderation commands and warn escalation rules.
 
 # The main staff toolbox: actions, warnings, logs, and escalation.
 import asyncio
+import logging
 import re
 from datetime import datetime, timedelta
 
@@ -26,6 +27,10 @@ from utils.db import (
     remove_escalation_rule,
     upsert_escalation_rule,
 )
+from utils.time import parse_db_timestamp, unix_timestamp
+
+
+log = logging.getLogger(__name__)
 
 
 LINK_PATTERN = re.compile(
@@ -220,13 +225,21 @@ class Moderation(commands.Cog, name="Moderation"):
 
         channel = guild.get_channel(channel_id)
         if channel:
-            await channel.send(embed=embed)
+            try:
+                await channel.send(embed=embed)
+            except (discord.Forbidden, discord.HTTPException):
+                log.warning(
+                    "Could not send moderation log in guild %s to channel %s.",
+                    guild.id,
+                    channel_id,
+                    exc_info=True,
+                )
 
     async def try_dm(self, user: discord.abc.User, embed: discord.Embed):
         """Try to DM the user and ignore closed DMs."""
         try:
             await user.send(embed=embed)
-        except discord.Forbidden:
+        except (discord.Forbidden, discord.HTTPException):
             pass
 
     async def send_action_dm(
@@ -281,33 +294,53 @@ class Moderation(commands.Cog, name="Moderation"):
         expired_bans = await get_expired_temp_bans(discord.utils.utcnow().isoformat())
         for entry in expired_bans:
             guild = self.bot.get_guild(entry["guild_id"])
+            remove_entry = False
             if guild is None:
-                await remove_temp_ban(entry["guild_id"], entry["user_id"])
-                continue
+                remove_entry = True
+            else:
+                moderator = self.bot.user
+                if moderator is None:
+                    log.warning(
+                        "Bot user is unavailable while expiring tempbans; will retry."
+                    )
+                    continue
 
-            try:
-                user = await self.bot.fetch_user(entry["user_id"])
-                await guild.unban(user, reason="Temporary ban expired.")
-                case_id = await add_case(
-                    guild.id,
-                    user.id,
-                    self.bot.user.id,
-                    "unban",
-                    "Temporary ban expired.",
-                )
-                embed = self.mod_embed(
-                    "Tempban Expired",
-                    user,
-                    self.bot.user,
-                    "Temporary ban expired.",
-                    case_id,
-                )
-                await self.send_mod_log(guild, embed)
-            except discord.NotFound:
-                pass
-            except discord.Forbidden:
-                continue
-            finally:
+                try:
+                    user = await self.bot.fetch_user(entry["user_id"])
+                    await guild.unban(user, reason="Temporary ban expired.")
+                    case_id = await add_case(
+                        guild.id,
+                        user.id,
+                        moderator.id,
+                        "unban",
+                        "Temporary ban expired.",
+                    )
+                    embed = self.mod_embed(
+                        "Tempban Expired",
+                        user,
+                        moderator,
+                        "Temporary ban expired.",
+                        case_id,
+                    )
+                    await self.send_mod_log(guild, embed)
+                    remove_entry = True
+                except discord.NotFound:
+                    remove_entry = True
+                except discord.Forbidden:
+                    log.warning(
+                        "Missing permission to expire tempban for user %s in guild %s; will retry.",
+                        entry["user_id"],
+                        entry["guild_id"],
+                    )
+                except discord.HTTPException:
+                    log.warning(
+                        "Could not expire tempban for user %s in guild %s; will retry.",
+                        entry["user_id"],
+                        entry["guild_id"],
+                        exc_info=True,
+                    )
+
+            if remove_entry:
                 await remove_temp_ban(entry["guild_id"], entry["user_id"])
 
     @tempban_loop.before_loop
@@ -583,11 +616,12 @@ class Moderation(commands.Cog, name="Moderation"):
         if recent_warns:
             lines = []
             for warn in recent_warns:
-                timestamp = int(datetime.fromisoformat(warn["created_at"]).timestamp())
+                timestamp = unix_timestamp(warn["created_at"])
                 reason = warn["reason"] or "No reason given"
                 if len(reason) > 90:
                     reason = f"{reason[:87]}..."
-                lines.append(f"`#{warn['id']}` <t:{timestamp}:d> - {reason}")
+                date_text = f"<t:{timestamp}:d>" if timestamp else "Unknown date"
+                lines.append(f"`#{warn['id']}` {date_text} - {reason}")
             embed.add_field(
                 name="Recent warnings", value="\n".join(lines), inline=False
             )
@@ -1031,10 +1065,14 @@ class Moderation(commands.Cog, name="Moderation"):
         embed = discord.Embed(title="Active Temporary Bans", color=COLOR_MOD)
         for entry in entries[:15]:
             user = self.bot.get_user(entry["user_id"]) or f"User ID {entry['user_id']}"
+            expires_at = parse_db_timestamp(entry["expires_at"])
+            expires_value = (
+                f"<t:{int(expires_at.timestamp())}:R>" if expires_at else "Unknown"
+            )
             embed.add_field(
                 name=str(user),
                 value=(
-                    f"Expires: <t:{int(datetime.fromisoformat(entry['expires_at']).timestamp())}:R>\n"
+                    f"Expires: {expires_value}\n"
                     f"Reason: {entry['reason'] or 'No reason given'}"
                 ),
                 inline=False,

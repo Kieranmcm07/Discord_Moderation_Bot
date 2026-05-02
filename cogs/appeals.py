@@ -8,6 +8,7 @@ another setup flow before members can ask staff to review a moderation case.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from datetime import datetime
 
@@ -28,6 +29,10 @@ from utils.db import (
     get_user_cases,
 )
 from utils.embeds import make_embed
+from utils.time import unix_timestamp
+
+
+log = logging.getLogger(__name__)
 
 
 def slugify(value: str) -> str:
@@ -137,7 +142,15 @@ class Appeals(commands.Cog, name="Appeals"):
             color=color,
             timestamp=datetime.utcnow(),
         )
-        await channel.send(embed=embed)
+        try:
+            await channel.send(embed=embed)
+        except (discord.Forbidden, discord.HTTPException):
+            log.warning(
+                "Could not send appeal log in guild %s to channel %s.",
+                guild.id,
+                settings["log_channel_id"],
+                exc_info=True,
+            )
 
     async def handle_appeal_submit(
         self,
@@ -268,7 +281,8 @@ class Appeals(commands.Cog, name="Appeals"):
 
                 history = await get_user_cases(interaction.guild.id, interaction.user.id)
                 moderator = self.bot.get_user(case["mod_id"]) or f"ID: {case['mod_id']}"
-                created_at = int(datetime.fromisoformat(case["created_at"]).timestamp())
+                created_at = unix_timestamp(case["created_at"])
+                case_date = f"<t:{created_at}:F>" if created_at else "Unknown"
 
                 embed = discord.Embed(
                     title=f"Case Appeal #{ticket_id}",
@@ -280,7 +294,7 @@ class Appeals(commands.Cog, name="Appeals"):
                 )
                 embed.add_field(name="Case", value=f"#{case_id}", inline=True)
                 embed.add_field(name="Action", value=case["action"].title(), inline=True)
-                embed.add_field(name="Case Date", value=f"<t:{created_at}:F>", inline=True)
+                embed.add_field(name="Case Date", value=case_date, inline=True)
                 embed.add_field(name="Original Moderator", value=str(moderator), inline=True)
                 embed.add_field(
                     name="Total User Cases",
