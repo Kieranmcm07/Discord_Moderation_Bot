@@ -4,9 +4,10 @@ cogs/moderation.py - moderation commands and warn escalation rules.
 
 # The main staff toolbox: actions, warnings, logs, and escalation.
 import asyncio
+import io
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import discord
 from discord.ext import commands, tasks
@@ -37,6 +38,8 @@ LINK_PATTERN = re.compile(
     r"(https?://\S+|discord(?:app)?\.com/invite/\S+|discord\.gg/\S+)",
     re.IGNORECASE,
 )
+MAX_CHATLOG_MESSAGES = 5000
+MAX_CHATLOG_BYTES = 8 * 1024 * 1024
 
 
 def parse_duration(duration_str: str) -> int | None:
@@ -85,6 +88,75 @@ def parse_duration(duration_str: str) -> int | None:
     return total
 
 
+def _format_chatlog_timestamp(timestamp: datetime | None) -> str:
+    if timestamp is None:
+        return "unknown time"
+
+    return timestamp.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def _safe_filename_part(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-._")
+    return cleaned[:60] or "chat"
+
+
+def build_chatlog_text(
+    guild: discord.Guild,
+    channel: discord.abc.GuildChannel,
+    requester: discord.abc.User,
+    messages: list[discord.Message],
+    requested_amount: int,
+) -> str:
+    """Create a readable plain-text transcript from Discord messages."""
+    generated_at = _format_chatlog_timestamp(discord.utils.utcnow())
+    channel_name = getattr(channel, "name", str(channel))
+    lines = [
+        "Discord Chat Log",
+        f"Guild: {guild.name} ({guild.id})",
+        f"Channel: #{channel_name} ({channel.id})",
+        f"Requested by: {requester} ({requester.id})",
+        f"Generated at: {generated_at}",
+        f"Messages requested: {requested_amount}",
+        f"Messages exported: {len(messages)}",
+        "",
+        "Messages are ordered oldest to newest.",
+        "=" * 72,
+        "",
+    ]
+
+    if not messages:
+        lines.append("No messages found.")
+        return "\n".join(lines)
+
+    for message in messages:
+        timestamp = _format_chatlog_timestamp(message.created_at)
+        author = f"{message.author} ({message.author.id})"
+        content = (message.clean_content or "").strip() or "[no text content]"
+        lines.append(f"[{timestamp}] {author}: {content}")
+
+        if message.edited_at:
+            lines.append(f"    Edited: {_format_chatlog_timestamp(message.edited_at)}")
+
+        if message.reference and message.reference.message_id:
+            lines.append(f"    Reply to message ID: {message.reference.message_id}")
+
+        if message.attachments:
+            lines.append("    Attachments:")
+            for attachment in message.attachments:
+                lines.append(f"    - {attachment.filename}: {attachment.url}")
+
+        if message.stickers:
+            sticker_names = ", ".join(sticker.name for sticker in message.stickers)
+            lines.append(f"    Stickers: {sticker_names}")
+
+        if message.embeds:
+            lines.append(f"    Embeds: {len(message.embeds)}")
+
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 class Moderation(commands.Cog, name="Moderation"):
     """Commands for keeping the server in order."""
 
@@ -94,6 +166,58 @@ class Moderation(commands.Cog, name="Moderation"):
 
     def cog_unload(self):
         self.tempban_loop.cancel()
+
+    async def resolve_chatlog_options(
+        self,
+        ctx: commands.Context,
+        args: tuple[str, ...],
+    ) -> tuple[discord.TextChannel | discord.Thread | None, int, str | None]:
+        """Parse flexible chatlog arguments without making the command fussy."""
+        channel = ctx.channel
+        amount = 100
+        channel_set = False
+        amount_set = False
+
+        if len(args) > 2:
+            return (
+                None,
+                amount,
+                "Use `,chatlog [#channel] [amount]` with at most one channel and one amount.",
+            )
+
+        for raw_arg in args:
+            if re.fullmatch(r"-?\d+", raw_arg):
+                if amount_set:
+                    return None, amount, "Only provide one message amount."
+                amount = int(raw_arg)
+                amount_set = True
+                continue
+
+            if channel_set:
+                return None, amount, "Only provide one channel."
+
+            resolved_channel = None
+            for converter in (
+                commands.TextChannelConverter(),
+                commands.ThreadConverter(),
+            ):
+                try:
+                    resolved_channel = await converter.convert(ctx, raw_arg)
+                    break
+                except commands.BadArgument:
+                    continue
+
+            if resolved_channel is None:
+                return (
+                    None,
+                    amount,
+                    "I could not find that channel. Use a channel mention, ID, or name.",
+                )
+
+            channel = resolved_channel
+            channel_set = True
+
+        return channel, amount, None
 
     async def can_moderate(
         self,
@@ -862,6 +986,121 @@ class Moderation(commands.Cog, name="Moderation"):
         )
         await asyncio.sleep(3)
         await msg.delete()
+
+    @commands.command(
+        name="chatlog",
+        aliases=["transcript", "exportchat"],
+        help="Export recent channel messages as a text file.",
+    )
+    @commands.has_permissions(manage_messages=True)
+    @commands.bot_has_permissions(read_message_history=True, attach_files=True)
+    async def chatlog(self, ctx, *args: str):
+        """Usage: ,chatlog [#channel] [amount]"""
+        channel, amount, error = await self.resolve_chatlog_options(ctx, args)
+        if error or channel is None:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description=error or "Could not resolve a channel.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        if amount < 1 or amount > MAX_CHATLOG_MESSAGES:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description=(
+                        f"Amount must be between 1 and {MAX_CHATLOG_MESSAGES} messages."
+                    ),
+                    color=COLOR_ERROR,
+                )
+            )
+
+        author_perms = channel.permissions_for(ctx.author)
+        if (
+            not author_perms.view_channel
+            or not author_perms.read_message_history
+            or not author_perms.manage_messages
+        ):
+            return await ctx.send(
+                embed=discord.Embed(
+                    description=(
+                        "You need `Manage Messages`, `View Channel`, and "
+                        "`Read Message History` in that channel to export it."
+                    ),
+                    color=COLOR_ERROR,
+                )
+            )
+
+        bot_member = ctx.guild.me
+        bot_perms = channel.permissions_for(bot_member)
+        if not bot_perms.view_channel or not bot_perms.read_message_history:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description=(
+                        "I need `View Channel` and `Read Message History` in that "
+                        "channel before I can export it."
+                    ),
+                    color=COLOR_ERROR,
+                )
+            )
+
+        before = ctx.message if channel.id == ctx.channel.id else None
+        try:
+            async with ctx.typing():
+                newest_first = [
+                    message
+                    async for message in channel.history(limit=amount, before=before)
+                ]
+        except discord.Forbidden:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="I could not read that channel's message history.",
+                    color=COLOR_ERROR,
+                )
+            )
+        except discord.HTTPException:
+            log.warning(
+                "Could not export chatlog for guild %s channel %s.",
+                ctx.guild.id,
+                channel.id,
+                exc_info=True,
+            )
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="Discord did not return the channel history. Try again in a moment.",
+                    color=COLOR_ERROR,
+                )
+            )
+
+        messages = list(reversed(newest_first))
+        transcript = build_chatlog_text(ctx.guild, channel, ctx.author, messages, amount)
+        payload = transcript.encode("utf-8")
+        if len(payload) > MAX_CHATLOG_BYTES:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description=(
+                        "That transcript is too large to upload. Try a smaller message amount."
+                    ),
+                    color=COLOR_ERROR,
+                )
+            )
+
+        generated_at = discord.utils.utcnow().strftime("%Y%m%d-%H%M%S")
+        filename = (
+            f"chatlog-{_safe_filename_part(ctx.guild.name)}-"
+            f"{_safe_filename_part(getattr(channel, 'name', str(channel)))}-"
+            f"{generated_at}.txt"
+        )
+        channel_label = getattr(channel, "mention", f"#{channel.name}")
+        await ctx.send(
+            embed=discord.Embed(
+                description=(
+                    f"Exported **{len(messages)}** message(s) from {channel_label}."
+                ),
+                color=COLOR_SUCCESS,
+            ),
+            file=discord.File(io.BytesIO(payload), filename=filename),
+        )
 
     @commands.command(
         name="purgelinks",

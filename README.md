@@ -215,6 +215,7 @@ The default prefix in this README is `,`. Change it with `PREFIX` in `.env`.
 | `,untimeout @user [reason]` | Remove a timeout |
 | `,purge <amount>` | Delete recent messages |
 | `,clean <amount> [@user]` | Delete recent messages, optionally from one user |
+| `,chatlog [#channel] [amount]` | Export recent messages as a text file |
 | `,purgelinks <amount>` | Delete recent messages containing links |
 | `,purgebots <amount>` | Delete recent bot messages |
 | `,slowmode [seconds]` | Set channel slowmode |
