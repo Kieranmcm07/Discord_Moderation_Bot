@@ -366,6 +366,14 @@ class Moderation(commands.Cog, name="Moderation"):
         except (discord.Forbidden, discord.HTTPException):
             pass
 
+    async def delete_after_delay(self, message: discord.Message, seconds: int = 3):
+        """Delete short-lived command feedback without turning cleanup into an error."""
+        await asyncio.sleep(seconds)
+        try:
+            await message.delete()
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            pass
+
     async def send_action_dm(
         self,
         user: discord.abc.User,
@@ -943,8 +951,7 @@ class Moderation(commands.Cog, name="Moderation"):
                 color=COLOR_SUCCESS,
             )
         )
-        await asyncio.sleep(3)
-        await msg.delete()
+        await self.delete_after_delay(msg)
 
     @commands.command(
         name="clean",
@@ -984,8 +991,7 @@ class Moderation(commands.Cog, name="Moderation"):
                 color=COLOR_SUCCESS,
             )
         )
-        await asyncio.sleep(3)
-        await msg.delete()
+        await self.delete_after_delay(msg)
 
     @commands.command(
         name="chatlog",
@@ -1032,6 +1038,14 @@ class Moderation(commands.Cog, name="Moderation"):
             )
 
         bot_member = ctx.guild.me
+        if bot_member is None:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="I am not ready in this server yet. Try again in a moment.",
+                    color=COLOR_ERROR,
+                )
+            )
+
         bot_perms = channel.permissions_for(bot_member)
         if not bot_perms.view_channel or not bot_perms.read_message_history:
             return await ctx.send(
@@ -1133,8 +1147,7 @@ class Moderation(commands.Cog, name="Moderation"):
                 color=COLOR_SUCCESS,
             )
         )
-        await asyncio.sleep(3)
-        await msg.delete()
+        await self.delete_after_delay(msg)
 
     @commands.command(
         name="purgebots",
@@ -1164,8 +1177,7 @@ class Moderation(commands.Cog, name="Moderation"):
                 color=COLOR_SUCCESS,
             )
         )
-        await asyncio.sleep(3)
-        await msg.delete()
+        await self.delete_after_delay(msg)
 
     @commands.command(name="slowmode", help="Set slowmode on the current channel.")
     @commands.has_permissions(manage_channels=True)

@@ -79,6 +79,8 @@ class Tickets(commands.Cog, name="Tickets"):
     def __init__(self, bot):
         self.bot = bot
         self._registered_create_buttons: set[tuple[int, int]] = set()
+        # Keep one lock per guild/user for the life of the process. Removing
+        # locks while other button clicks are queued can reopen the race.
         self._ticket_creation_locks: dict[tuple[int, int], asyncio.Lock] = {}
 
     async def cog_load(self):
@@ -236,192 +238,188 @@ class Tickets(commands.Cog, name="Tickets"):
         lock_key = (interaction.guild.id, interaction.user.id)
         ticket_lock = self._ticket_creation_locks.setdefault(lock_key, asyncio.Lock())
 
-        try:
-            async with ticket_lock:
-                live_category = await self._get_live_ticket_category(
-                    interaction.guild.id,
-                    category["id"],
+        async with ticket_lock:
+            live_category = await self._get_live_ticket_category(
+                interaction.guild.id,
+                category["id"],
+            )
+            if not live_category:
+                return await self._send_ephemeral(
+                    interaction,
+                    "That ticket button is no longer active. Ask a staff member to post a fresh ticket panel.",
                 )
-                if not live_category:
-                    return await self._send_ephemeral(
-                        interaction,
-                        "That ticket button is no longer active. Ask a staff member to post a fresh ticket panel.",
-                    )
 
-                settings = await get_ticket_settings(interaction.guild.id)
-                if not settings or not settings.get("category_id"):
-                    return await self._send_ephemeral(
-                        interaction,
-                        "Ticket setup is incomplete. Ask an admin to set a ticket category first.",
-                    )
+            settings = await get_ticket_settings(interaction.guild.id)
+            if not settings or not settings.get("category_id"):
+                return await self._send_ephemeral(
+                    interaction,
+                    "Ticket setup is incomplete. Ask an admin to set a ticket category first.",
+                )
 
-                ticket_parent = interaction.guild.get_channel(settings["category_id"])
-                if not isinstance(ticket_parent, discord.CategoryChannel):
-                    return await self._send_ephemeral(
-                        interaction,
-                        "The configured ticket category no longer exists.",
-                    )
+            ticket_parent = interaction.guild.get_channel(settings["category_id"])
+            if not isinstance(ticket_parent, discord.CategoryChannel):
+                return await self._send_ephemeral(
+                    interaction,
+                    "The configured ticket category no longer exists.",
+                )
 
+            existing = await get_open_ticket_for_user(
+                interaction.guild.id, interaction.user.id
+            )
+            if existing:
+                existing_channel = interaction.guild.get_channel(
+                    existing["channel_id"]
+                )
+                if not existing_channel:
+                    await close_ticket(
+                        existing["channel_id"],
+                        self.bot.user.id if self.bot.user else 0,
+                    )
+                    existing = None
+
+            if existing:
+                existing_channel = interaction.guild.get_channel(
+                    existing["channel_id"]
+                )
+                mention = (
+                    existing_channel.mention
+                    if existing_channel
+                    else f"`{existing['channel_id']}`"
+                )
+                return await self._send_ephemeral(
+                    interaction,
+                    f"You already have an open ticket: {mention}",
+                )
+
+            me = interaction.guild.me
+            if me is None:
+                return await self._send_ephemeral(
+                    interaction,
+                    "I am not ready yet. Try again in a moment.",
+                )
+
+            staff_roles = await self._get_staff_roles(interaction.guild)
+            overwrites = {
+                interaction.guild.default_role: discord.PermissionOverwrite(
+                    view_channel=False
+                ),
+                me: discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                    manage_channels=True,
+                ),
+                interaction.user: discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    attach_files=True,
+                    embed_links=True,
+                    read_message_history=True,
+                ),
+            }
+
+            for role in staff_roles:
+                overwrites[role] = discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    attach_files=True,
+                    embed_links=True,
+                    read_message_history=True,
+                    manage_messages=True,
+                )
+
+            safe_user = slugify(interaction.user.display_name)
+            safe_category = slugify(live_category["name"])
+            channel_name = f"{safe_category}-{safe_user}"[:95]
+
+            channel = await interaction.guild.create_text_channel(
+                name=channel_name,
+                category=ticket_parent,
+                overwrites=overwrites,
+                topic=f"Ticket for {interaction.user} | Category: {live_category['name']}",
+                reason=f"Ticket opened by {interaction.user}",
+            )
+
+            try:
+                ticket_id = await create_ticket(
+                    interaction.guild.id,
+                    channel.id,
+                    interaction.user.id,
+                    live_category["name"],
+                )
+            except aiosqlite.IntegrityError:
+                await channel.delete(reason="Duplicate open ticket prevented")
                 existing = await get_open_ticket_for_user(
                     interaction.guild.id, interaction.user.id
                 )
-                if existing:
-                    existing_channel = interaction.guild.get_channel(
-                        existing["channel_id"]
-                    )
-                    if not existing_channel:
-                        await close_ticket(
-                            existing["channel_id"],
-                            self.bot.user.id if self.bot.user else 0,
-                        )
-                        existing = None
-
-                if existing:
-                    existing_channel = interaction.guild.get_channel(
-                        existing["channel_id"]
-                    )
-                    mention = (
-                        existing_channel.mention
-                        if existing_channel
-                        else f"`{existing['channel_id']}`"
-                    )
-                    return await self._send_ephemeral(
-                        interaction,
-                        f"You already have an open ticket: {mention}",
-                    )
-
-                me = interaction.guild.me
-                if me is None:
-                    return await self._send_ephemeral(
-                        interaction,
-                        "I am not ready yet. Try again in a moment.",
-                    )
-
-                staff_roles = await self._get_staff_roles(interaction.guild)
-                overwrites = {
-                    interaction.guild.default_role: discord.PermissionOverwrite(
-                        view_channel=False
-                    ),
-                    me: discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        read_message_history=True,
-                        manage_channels=True,
-                    ),
-                    interaction.user: discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        attach_files=True,
-                        embed_links=True,
-                        read_message_history=True,
-                    ),
-                }
-
-                for role in staff_roles:
-                    overwrites[role] = discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        attach_files=True,
-                        embed_links=True,
-                        read_message_history=True,
-                        manage_messages=True,
-                    )
-
-                safe_user = slugify(interaction.user.display_name)
-                safe_category = slugify(live_category["name"])
-                channel_name = f"{safe_category}-{safe_user}"[:95]
-
-                channel = await interaction.guild.create_text_channel(
-                    name=channel_name,
-                    category=ticket_parent,
-                    overwrites=overwrites,
-                    topic=f"Ticket for {interaction.user} | Category: {live_category['name']}",
-                    reason=f"Ticket opened by {interaction.user}",
+                existing_channel = (
+                    interaction.guild.get_channel(existing["channel_id"])
+                    if existing
+                    else None
                 )
-
-                try:
-                    ticket_id = await create_ticket(
-                        interaction.guild.id,
-                        channel.id,
-                        interaction.user.id,
-                        live_category["name"],
-                    )
-                except aiosqlite.IntegrityError:
-                    await channel.delete(reason="Duplicate open ticket prevented")
-                    existing = await get_open_ticket_for_user(
-                        interaction.guild.id, interaction.user.id
-                    )
-                    existing_channel = (
-                        interaction.guild.get_channel(existing["channel_id"])
-                        if existing
-                        else None
-                    )
-                    mention = (
-                        existing_channel.mention
-                        if existing_channel
-                        else "your existing ticket"
-                    )
-                    return await self._send_ephemeral(
-                        interaction,
-                        f"You already have an open ticket: {mention}",
-                    )
-
-                ticket = await get_ticket_by_channel(channel.id)
-
-                embed = discord.Embed(
-                    title="Support Ticket Opened",
-                    description=(
-                        f"{interaction.user.mention}, thanks for opening a ticket.\n"
-                        f"A member of staff will be with you soon.\n\n"
-                        f"**Category:** {live_category['name']}\n"
-                        f"**Ticket ID:** #{ticket_id}"
-                    ),
-                    color=COLOR_INFO,
-                    timestamp=datetime.utcnow(),
+                mention = (
+                    existing_channel.mention
+                    if existing_channel
+                    else "your existing ticket"
                 )
-                if live_category.get("description"):
-                    embed.add_field(
-                        name="Details",
-                        value=live_category["description"],
-                        inline=False,
-                    )
-                embed.add_field(
-                    name="Opened By", value=interaction.user.mention, inline=True
-                )
-                embed.add_field(
-                    name="Staff Roles",
-                    value=(
-                        ", ".join(role.mention for role in staff_roles)
-                        if staff_roles
-                        else "None configured"
-                    ),
-                    inline=True,
-                )
-                embed.set_footer(
-                    text="Use the button below or ,closeticket to close this ticket."
-                )
-
-                view = self._build_close_view()
-                staff_ping = " ".join(role.mention for role in staff_roles)
-                await channel.send(content=staff_ping or None, embed=embed, view=view)
-
-                await self._send_ephemeral(
+                return await self._send_ephemeral(
                     interaction,
-                    f"Your ticket has been created: {channel.mention}",
+                    f"You already have an open ticket: {mention}",
                 )
 
-                await self._log_ticket_event(
-                    interaction.guild,
-                    title="Ticket Opened",
-                    description=(
-                        f"Ticket #{ticket_id} opened by {interaction.user.mention} in {channel.mention}."
-                    ),
-                    color=COLOR_SUCCESS,
-                    ticket=ticket,
+            ticket = await get_ticket_by_channel(channel.id)
+
+            embed = discord.Embed(
+                title="Support Ticket Opened",
+                description=(
+                    f"{interaction.user.mention}, thanks for opening a ticket.\n"
+                    f"A member of staff will be with you soon.\n\n"
+                    f"**Category:** {live_category['name']}\n"
+                    f"**Ticket ID:** #{ticket_id}"
+                ),
+                color=COLOR_INFO,
+                timestamp=datetime.utcnow(),
+            )
+            if live_category.get("description"):
+                embed.add_field(
+                    name="Details",
+                    value=live_category["description"],
+                    inline=False,
                 )
-        finally:
-            if not ticket_lock.locked():
-                self._ticket_creation_locks.pop(lock_key, None)
+            embed.add_field(
+                name="Opened By", value=interaction.user.mention, inline=True
+            )
+            embed.add_field(
+                name="Staff Roles",
+                value=(
+                    ", ".join(role.mention for role in staff_roles)
+                    if staff_roles
+                    else "None configured"
+                ),
+                inline=True,
+            )
+            embed.set_footer(
+                text="Use the button below or ,closeticket to close this ticket."
+            )
+
+            view = self._build_close_view()
+            staff_ping = " ".join(role.mention for role in staff_roles)
+            await channel.send(content=staff_ping or None, embed=embed, view=view)
+
+            await self._send_ephemeral(
+                interaction,
+                f"Your ticket has been created: {channel.mention}",
+            )
+
+            await self._log_ticket_event(
+                interaction.guild,
+                title="Ticket Opened",
+                description=(
+                    f"Ticket #{ticket_id} opened by {interaction.user.mention} in {channel.mention}."
+                ),
+                color=COLOR_SUCCESS,
+                ticket=ticket,
+            )
 
     async def handle_ticket_close(self, interaction: discord.Interaction):
         if not interaction.guild or not isinstance(

@@ -2,8 +2,12 @@ import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+import discord
+
+from cogs.invite_logger import invite_uses
 from cogs.moderation import build_chatlog_text, parse_duration
 from cogs.reminders import parse_duration_prefix
+from utils.embeds import decorate_embed
 from utils.time import parse_db_timestamp, unix_timestamp
 
 
@@ -14,6 +18,15 @@ class FakeUser:
 
     def __str__(self):
         return self.name
+
+
+class FakeAvatar:
+    url = "https://example.com/bot.png"
+
+
+class FakeBotUser:
+    name = "Test Bot"
+    display_avatar = FakeAvatar()
 
 
 class TimeHelperTests(unittest.TestCase):
@@ -68,6 +81,21 @@ class ChatlogFormattingTests(unittest.TestCase):
         self.assertIn("Guild: Test Guild (123)", transcript)
         self.assertIn("Channel: #general (456)", transcript)
         self.assertIn("[2026-05-02 12:30:00 UTC] Member#0001 (111): hello there", transcript)
+
+
+class HelperRegressionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_decorate_embed_preserves_existing_thumbnail(self):
+        bot = SimpleNamespace(user=FakeBotUser())
+        embed = discord.Embed(description="keeps custom thumbnail")
+        embed.set_thumbnail(url="https://example.com/custom.png")
+
+        decorated = await decorate_embed(bot, None, embed)
+
+        self.assertEqual(decorated.thumbnail.url, "https://example.com/custom.png")
+
+    def test_invite_uses_treats_missing_count_as_zero(self):
+        self.assertEqual(invite_uses(SimpleNamespace(uses=None)), 0)
+        self.assertEqual(invite_uses(SimpleNamespace(uses=3)), 3)
 
 
 if __name__ == "__main__":

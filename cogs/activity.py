@@ -6,7 +6,7 @@ which keeps this feature useful without feeling invasive.
 """
 
 # This cog is stats only, not message spying.
-from datetime import date, datetime
+from datetime import datetime
 
 import discord
 from discord.ext import commands
@@ -38,7 +38,7 @@ class Activity(commands.Cog, name="Activity"):
         if message.author.bot or not message.guild:
             return
 
-        today = date.today().isoformat()
+        today = discord.utils.utcnow().date().isoformat()
         await increment_message_stat(message.guild.id, message.author.id, today)
 
     @commands.Cog.listener()
@@ -49,16 +49,19 @@ class Activity(commands.Cog, name="Activity"):
         after: discord.VoiceState,
     ):
         """Track minutes spent in voice channels."""
+        if member.bot:
+            return
+
         key = (member.guild.id, member.id)
 
         if before.channel is None and after.channel is not None:
-            voice_join_times[key] = datetime.utcnow()
+            voice_join_times[key] = discord.utils.utcnow()
             return
 
         if before.channel is not None and after.channel is None:
             join_time = voice_join_times.pop(key, None)
             if join_time:
-                minutes = int((datetime.utcnow() - join_time).total_seconds() / 60)
+                minutes = int((discord.utils.utcnow() - join_time).total_seconds() / 60)
                 if minutes > 0:
                     await add_voice_time(member.guild.id, member.id, minutes)
             return
@@ -70,10 +73,10 @@ class Activity(commands.Cog, name="Activity"):
         ):
             join_time = voice_join_times.get(key)
             if join_time:
-                minutes = int((datetime.utcnow() - join_time).total_seconds() / 60)
+                minutes = int((discord.utils.utcnow() - join_time).total_seconds() / 60)
                 if minutes > 0:
                     await add_voice_time(member.guild.id, member.id, minutes)
-            voice_join_times[key] = datetime.utcnow()
+            voice_join_times[key] = discord.utils.utcnow()
 
     @commands.command(
         name="topchat",

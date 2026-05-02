@@ -27,6 +27,14 @@ async def ensure_column(
         )
 
 
+async def ensure_columns(
+    db: aiosqlite.Connection, table_name: str, columns: dict[str, str]
+):
+    """Apply a batch of safe SQLite column migrations."""
+    for column_name, definition in columns.items():
+        await ensure_column(db, table_name, column_name, definition)
+
+
 async def init_db():
     """Create all required tables and perform light schema upgrades."""
     db_directory = os.path.dirname(DB_PATH)
@@ -225,10 +233,19 @@ async def init_db():
             """
         )
 
-        await ensure_column(db, "guild_settings", "embed_image_url", "TEXT")
-        await ensure_column(db, "guild_settings", "mod_log_channel_id", "INTEGER")
-        await ensure_column(
-            db, "guild_settings", "message_log_channel_id", "INTEGER"
+        await ensure_columns(
+            db,
+            "guild_settings",
+            {
+                "welcome_channel_id": "INTEGER",
+                "leave_channel_id": "INTEGER",
+                "welcome_message": "TEXT",
+                "leave_message": "TEXT",
+                "embed_color": "INTEGER",
+                "embed_image_url": "TEXT",
+                "mod_log_channel_id": "INTEGER",
+                "message_log_channel_id": "INTEGER",
+            },
         )
 
         await db.execute(
@@ -338,6 +355,67 @@ async def init_db():
                 PRIMARY KEY (guild_id, term)
             )
             """
+        )
+
+        # These light migrations let people pull new code without deleting their
+        # old SQLite database. New installs already have the same columns.
+        await ensure_columns(
+            db,
+            "cases",
+            {
+                "reason": "TEXT",
+                "duration": "TEXT",
+                "created_at": "TIMESTAMP",
+            },
+        )
+        await ensure_columns(
+            db,
+            "ticket_settings",
+            {
+                "category_id": "INTEGER",
+                "log_channel_id": "INTEGER",
+                "panel_channel_id": "INTEGER",
+            },
+        )
+        await ensure_columns(
+            db,
+            "tickets",
+            {
+                "category_name": "TEXT NOT NULL DEFAULT 'General'",
+                "status": "TEXT NOT NULL DEFAULT 'open'",
+                "created_at": "TIMESTAMP",
+                "closed_at": "TIMESTAMP",
+                "closed_by_id": "INTEGER",
+            },
+        )
+        await ensure_columns(
+            db,
+            "reaction_roles",
+            {
+                "label": "TEXT NOT NULL DEFAULT 'Role'",
+                "emoji": "TEXT",
+            },
+        )
+        await ensure_columns(
+            db,
+            "sentinel_settings",
+            {
+                "enabled": "INTEGER NOT NULL DEFAULT 1",
+                "log_channel_id": "INTEGER",
+                "alert_threshold": "INTEGER NOT NULL DEFAULT 70",
+                "auto_timeout_seconds": "INTEGER NOT NULL DEFAULT 0",
+            },
+        )
+        await ensure_columns(
+            db,
+            "automod_settings",
+            {
+                "enabled": "INTEGER NOT NULL DEFAULT 1",
+                "delete_invites": "INTEGER NOT NULL DEFAULT 1",
+                "delete_links": "INTEGER NOT NULL DEFAULT 0",
+                "mass_mention_limit": "INTEGER NOT NULL DEFAULT 6",
+                "warn_on_trigger": "INTEGER NOT NULL DEFAULT 0",
+            },
         )
 
         await db.commit()

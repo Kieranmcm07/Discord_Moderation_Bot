@@ -64,6 +64,9 @@ STAR_BANNER = r"""
 
 
 def enable_ansi():
+    if os.name != "nt":
+        return
+
     kernel32 = ctypes.windll.kernel32
     handle = kernel32.GetStdHandle(-11)
     mode = ctypes.c_uint32()
@@ -72,7 +75,7 @@ def enable_ansi():
 
 
 def clear_screen():
-    os.system("cls")
+    os.system("cls" if os.name == "nt" else "clear")
 
 
 def paint(text: str, colour: str) -> str:

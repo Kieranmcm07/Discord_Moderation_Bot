@@ -91,6 +91,8 @@ class Appeals(commands.Cog, name="Appeals"):
 
     def __init__(self, bot):
         self.bot = bot
+        # Appeal creation can be double-clicked too, so keep a stable lock per
+        # guild/user instead of removing it while another click may be waiting.
         self._appeal_locks: dict[tuple[int, int], asyncio.Lock] = {}
 
     async def cog_load(self):
@@ -202,140 +204,134 @@ class Appeals(commands.Cog, name="Appeals"):
         lock_key = (interaction.guild.id, interaction.user.id)
         appeal_lock = self._appeal_locks.setdefault(lock_key, asyncio.Lock())
 
-        try:
-            async with appeal_lock:
-                existing = await get_open_ticket_for_user(
-                    interaction.guild.id, interaction.user.id
-                )
-                if existing:
-                    channel = interaction.guild.get_channel(existing["channel_id"])
-                    if channel:
-                        return await interaction.followup.send(
-                            f"You already have an open ticket: {channel.mention}",
-                            ephemeral=True,
-                        )
-                    await close_ticket(
-                        existing["channel_id"],
-                        self.bot.user.id if self.bot.user else 0,
-                    )
-
-                me = interaction.guild.me
-                if me is None:
+        async with appeal_lock:
+            existing = await get_open_ticket_for_user(
+                interaction.guild.id, interaction.user.id
+            )
+            if existing:
+                channel = interaction.guild.get_channel(existing["channel_id"])
+                if channel:
                     return await interaction.followup.send(
-                        "I am not ready yet. Try again in a moment.",
+                        f"You already have an open ticket: {channel.mention}",
                         ephemeral=True,
                     )
-
-                staff_roles = await self._get_staff_roles(interaction.guild)
-                overwrites = {
-                    interaction.guild.default_role: discord.PermissionOverwrite(
-                        view_channel=False
-                    ),
-                    me: discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        read_message_history=True,
-                        manage_channels=True,
-                    ),
-                    interaction.user: discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        attach_files=True,
-                        embed_links=True,
-                        read_message_history=True,
-                    ),
-                }
-                for role in staff_roles:
-                    overwrites[role] = discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        attach_files=True,
-                        embed_links=True,
-                        read_message_history=True,
-                        manage_messages=True,
-                    )
-
-                channel = await interaction.guild.create_text_channel(
-                    name=f"appeal-{case_id}-{slugify(interaction.user.display_name)}"[
-                        :95
-                    ],
-                    category=parent,
-                    overwrites=overwrites,
-                    topic=f"Appeal for case #{case_id} | {interaction.user}",
-                    reason=f"Appeal opened by {interaction.user}",
+                await close_ticket(
+                    existing["channel_id"],
+                    self.bot.user.id if self.bot.user else 0,
                 )
 
-                try:
-                    ticket_id = await create_ticket(
-                        interaction.guild.id,
-                        channel.id,
-                        interaction.user.id,
-                        "Appeal",
-                    )
-                except aiosqlite.IntegrityError:
-                    await channel.delete(reason="Duplicate appeal prevented")
-                    return await interaction.followup.send(
-                        "You already have an open ticket.",
-                        ephemeral=True,
-                    )
-
-                history = await get_user_cases(interaction.guild.id, interaction.user.id)
-                moderator = self.bot.get_user(case["mod_id"]) or f"ID: {case['mod_id']}"
-                created_at = unix_timestamp(case["created_at"])
-                case_date = f"<t:{created_at}:F>" if created_at else "Unknown"
-
-                embed = discord.Embed(
-                    title=f"Case Appeal #{ticket_id}",
-                    description=(
-                        f"{interaction.user.mention} opened an appeal for case `#{case_id}`."
-                    ),
-                    color=COLOR_MOD,
-                    timestamp=datetime.utcnow(),
-                )
-                embed.add_field(name="Case", value=f"#{case_id}", inline=True)
-                embed.add_field(name="Action", value=case["action"].title(), inline=True)
-                embed.add_field(name="Case Date", value=case_date, inline=True)
-                embed.add_field(name="Original Moderator", value=str(moderator), inline=True)
-                embed.add_field(
-                    name="Total User Cases",
-                    value=str(len(history)),
-                    inline=True,
-                )
-                if case.get("duration"):
-                    embed.add_field(name="Duration", value=case["duration"], inline=True)
-                embed.add_field(
-                    name="Original Reason",
-                    value=short_text(case.get("reason"), 700),
-                    inline=False,
-                )
-                embed.add_field(
-                    name="Appeal Reason",
-                    value=short_text(appeal_reason, 1000),
-                    inline=False,
-                )
-                embed.set_footer(
-                    text=f"Staff: {PREFIX}appeal accept <note> or {PREFIX}appeal deny <note>"
-                )
-
-                staff_ping = " ".join(role.mention for role in staff_roles)
-                await channel.send(content=staff_ping or None, embed=embed)
-                await interaction.followup.send(
-                    f"Your appeal has been opened: {channel.mention}",
+            me = interaction.guild.me
+            if me is None:
+                return await interaction.followup.send(
+                    "I am not ready yet. Try again in a moment.",
                     ephemeral=True,
                 )
 
-                await self._log_appeal_event(
-                    interaction.guild,
-                    title="Appeal Opened",
-                    description=(
-                        f"{interaction.user.mention} opened appeal ticket #{ticket_id} "
-                        f"for case `#{case_id}` in {channel.mention}."
-                    ),
-                    color=COLOR_SUCCESS,
+            staff_roles = await self._get_staff_roles(interaction.guild)
+            overwrites = {
+                interaction.guild.default_role: discord.PermissionOverwrite(
+                    view_channel=False
+                ),
+                me: discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                    manage_channels=True,
+                ),
+                interaction.user: discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    attach_files=True,
+                    embed_links=True,
+                    read_message_history=True,
+                ),
+            }
+            for role in staff_roles:
+                overwrites[role] = discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    attach_files=True,
+                    embed_links=True,
+                    read_message_history=True,
+                    manage_messages=True,
                 )
-        finally:
-            if not appeal_lock.locked():
-                self._appeal_locks.pop(lock_key, None)
+
+            channel = await interaction.guild.create_text_channel(
+                name=f"appeal-{case_id}-{slugify(interaction.user.display_name)}"[:95],
+                category=parent,
+                overwrites=overwrites,
+                topic=f"Appeal for case #{case_id} | {interaction.user}",
+                reason=f"Appeal opened by {interaction.user}",
+            )
+
+            try:
+                ticket_id = await create_ticket(
+                    interaction.guild.id,
+                    channel.id,
+                    interaction.user.id,
+                    "Appeal",
+                )
+            except aiosqlite.IntegrityError:
+                await channel.delete(reason="Duplicate appeal prevented")
+                return await interaction.followup.send(
+                    "You already have an open ticket.",
+                    ephemeral=True,
+                )
+
+            history = await get_user_cases(interaction.guild.id, interaction.user.id)
+            moderator = self.bot.get_user(case["mod_id"]) or f"ID: {case['mod_id']}"
+            created_at = unix_timestamp(case["created_at"])
+            case_date = f"<t:{created_at}:F>" if created_at else "Unknown"
+
+            embed = discord.Embed(
+                title=f"Case Appeal #{ticket_id}",
+                description=(
+                    f"{interaction.user.mention} opened an appeal for case `#{case_id}`."
+                ),
+                color=COLOR_MOD,
+                timestamp=datetime.utcnow(),
+            )
+            embed.add_field(name="Case", value=f"#{case_id}", inline=True)
+            embed.add_field(name="Action", value=case["action"].title(), inline=True)
+            embed.add_field(name="Case Date", value=case_date, inline=True)
+            embed.add_field(name="Original Moderator", value=str(moderator), inline=True)
+            embed.add_field(
+                name="Total User Cases",
+                value=str(len(history)),
+                inline=True,
+            )
+            if case.get("duration"):
+                embed.add_field(name="Duration", value=case["duration"], inline=True)
+            embed.add_field(
+                name="Original Reason",
+                value=short_text(case.get("reason"), 700),
+                inline=False,
+            )
+            embed.add_field(
+                name="Appeal Reason",
+                value=short_text(appeal_reason, 1000),
+                inline=False,
+            )
+            embed.set_footer(
+                text=f"Staff: {PREFIX}appeal accept <note> or {PREFIX}appeal deny <note>"
+            )
+
+            staff_ping = " ".join(role.mention for role in staff_roles)
+            await channel.send(content=staff_ping or None, embed=embed)
+            await interaction.followup.send(
+                f"Your appeal has been opened: {channel.mention}",
+                ephemeral=True,
+            )
+
+            await self._log_appeal_event(
+                interaction.guild,
+                title="Appeal Opened",
+                description=(
+                    f"{interaction.user.mention} opened appeal ticket #{ticket_id} "
+                    f"for case `#{case_id}` in {channel.mention}."
+                ),
+                color=COLOR_SUCCESS,
+            )
 
     @commands.command(
         name="appealpanel",

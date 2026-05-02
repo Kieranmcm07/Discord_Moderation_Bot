@@ -25,6 +25,11 @@ from utils.embeds import make_embed
 log = logging.getLogger(__name__)
 
 
+def invite_uses(invite: discord.Invite) -> int:
+    """Discord can return None for fresh invite counts, so compare as zero."""
+    return int(invite.uses or 0)
+
+
 class InviteLogger(commands.Cog, name="Invite Logger"):
     """Track invite usage and send join or leave logs."""
 
@@ -43,14 +48,14 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
         try:
             invites = await guild.invites()
             self.invite_cache[guild.id] = {
-                invite.code: invite.uses for invite in invites
+                invite.code: invite_uses(invite) for invite in invites
             }
             for invite in invites:
                 await upsert_invite(
                     guild.id,
                     invite.code,
                     invite.inviter.id if invite.inviter else None,
-                    invite.uses,
+                    invite_uses(invite),
                 )
         except discord.Forbidden:
             pass
@@ -76,12 +81,12 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
 
         for invite in current_invites:
             old_uses = old_counts.get(invite.code, 0)
-            if invite.uses > old_uses:
+            if invite_uses(invite) > old_uses:
                 used_invite = invite
                 break
 
         self.invite_cache[guild.id] = {
-            invite.code: invite.uses for invite in current_invites
+            invite.code: invite_uses(invite) for invite in current_invites
         }
 
         embed = await make_embed(
@@ -111,14 +116,14 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
             inviter = used_invite.inviter
             embed.add_field(
                 name="Joined via Invite",
-                value=f"`{used_invite.code}` by {inviter} ({used_invite.uses} total uses)",
+                value=f"`{used_invite.code}` by {inviter} ({invite_uses(used_invite)} total uses)",
                 inline=False,
             )
             await upsert_invite(
                 guild.id,
                 used_invite.code,
                 inviter.id if inviter else None,
-                used_invite.uses,
+                invite_uses(used_invite),
             )
         else:
             embed.add_field(
@@ -190,12 +195,12 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
         """Update the cache when a new invite is created."""
         if invite.guild.id not in self.invite_cache:
             self.invite_cache[invite.guild.id] = {}
-        self.invite_cache[invite.guild.id][invite.code] = invite.uses
+        self.invite_cache[invite.guild.id][invite.code] = invite_uses(invite)
         await upsert_invite(
             invite.guild.id,
             invite.code,
             invite.inviter.id if invite.inviter else None,
-            invite.uses,
+            invite_uses(invite),
         )
 
     @commands.Cog.listener()
@@ -219,6 +224,18 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
                 color=COLOR_ERROR,
             )
             return await ctx.send(embed=embed)
+        except discord.HTTPException:
+            log.warning(
+                "Could not read invites for guild %s.", ctx.guild.id, exc_info=True
+            )
+            embed = await make_embed(
+                self.bot,
+                guild=ctx.guild,
+                title="Cannot Read Invites",
+                description="Discord did not return the invite list. Try again in a moment.",
+                color=COLOR_ERROR,
+            )
+            return await ctx.send(embed=embed)
 
         if not invites:
             embed = await make_embed(
@@ -230,7 +247,7 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
             )
             return await ctx.send(embed=embed)
 
-        invites = sorted(invites, key=lambda invite: invite.uses, reverse=True)
+        invites = sorted(invites, key=invite_uses, reverse=True)
         embed = await make_embed(
             self.bot,
             guild=ctx.guild,
@@ -243,7 +260,7 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
                 name=f"`{invite.code}`",
                 value=(
                     f"Created by: {inviter}\n"
-                    f"Uses: {invite.uses}\n"
+                    f"Uses: {invite_uses(invite)}\n"
                     f"Max: {invite.max_uses or 'Unlimited'}"
                 ),
                 inline=True,

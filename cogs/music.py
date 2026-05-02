@@ -88,6 +88,7 @@ FILTER_ALIASES = {
     "bass": "bassboost",
     "boost": "bassboost",
     "chickmuck": "chipmunk",
+    "chipmuck": "chipmunk",
     "chip": "chipmunk",
     "nc": "nightcore",
     "vapor": "vaporwave",
@@ -827,7 +828,7 @@ class Music(commands.Cog, name="Music"):
 
     @commands.command(
         name="chipmunk",
-        aliases=["chickmuck"],
+        aliases=["chickmuck", "chipmuck"],
         help="Shortcut for the chipmunk music filter.",
     )
     async def chipmunk(self, ctx):

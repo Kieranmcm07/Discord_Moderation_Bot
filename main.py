@@ -26,6 +26,9 @@ from utils.db import get_custom_command, init_db
 from utils.embeds import decorate_embed, make_embed
 
 
+TOKEN_PLACEHOLDERS = {"YOUR_TOKEN_HERE", "YOUR_BOT_TOKEN_HERE"}
+
+
 def parse_args():
     """Parse a small set of startup flags used by the launcher scripts."""
     parser = argparse.ArgumentParser(description="Run the Discord moderation bot.")
@@ -38,7 +41,13 @@ def parse_args():
         "--status-file",
         help="Write launcher status updates to this file while booting.",
     )
-    return parser.parse_args()
+
+    if __name__ == "__main__":
+        return parser.parse_args()
+
+    # Tests and import-time tooling often add their own flags. Ignoring unknown
+    # flags here lets those tools import main.py without pretending to run it.
+    return parser.parse_known_args()[0]
 
 
 ARGS = parse_args()
@@ -462,7 +471,10 @@ class MyBot(commands.Bot):
             return
 
         log.error(
-            "Unhandled error in command %s: %s", ctx.command, error, exc_info=error
+            "Unhandled error in command %s: %s",
+            ctx.command,
+            error,
+            exc_info=(type(error), error, error.__traceback__),
         )
         await ctx.send(
             embed=await make_embed(
@@ -477,7 +489,7 @@ class MyBot(commands.Bot):
 
 async def main():
     """Create the bot instance and connect to Discord."""
-    if not BOT_TOKEN or BOT_TOKEN == "YOUR_TOKEN_HERE":
+    if not BOT_TOKEN or BOT_TOKEN in TOKEN_PLACEHOLDERS:
         raise RuntimeError(
             "BOT_TOKEN is missing. Add your real bot token to the .env file before starting the bot."
         )

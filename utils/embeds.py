@@ -48,7 +48,10 @@ async def decorate_embed(
     inheriting the improved project-wide visual style.
     """
     if bot.user:
-        embed.set_thumbnail(url=bot.user.display_avatar.url)
+        # Leave command-specific thumbnails alone. User info, avatars, and server
+        # info all need their own images more than they need the bot logo.
+        if not embed.thumbnail.url:
+            embed.set_thumbnail(url=bot.user.display_avatar.url)
 
         if not embed.footer.text:
             embed.set_footer(text=bot.user.name, icon_url=bot.user.display_avatar.url)

@@ -4,6 +4,7 @@ cogs/server_management.py - utility commands for managing the server itself.
 
 # General server tools live here so moderation.py does not become enormous.
 import asyncio
+import logging
 from datetime import datetime
 
 import discord
@@ -28,6 +29,8 @@ from utils.db import (
     update_sticky_message_id,
 )
 
+
+log = logging.getLogger(__name__)
 
 NUMBER_EMOJIS = [
     "1\ufe0f\u20e3",
@@ -89,6 +92,12 @@ class ServerManagement(commands.Cog, name="Server Management"):
             await update_sticky_message_id(channel.id, sticky_message.id)
         except asyncio.CancelledError:
             return
+        except (discord.Forbidden, discord.HTTPException):
+            log.warning(
+                "Could not refresh sticky message in channel %s.",
+                channel.id,
+                exc_info=True,
+            )
         finally:
             current_task = self._sticky_refresh_tasks.get(channel.id)
             if current_task is asyncio.current_task():
@@ -103,6 +112,10 @@ class ServerManagement(commands.Cog, name="Server Management"):
         role = member.guild.get_role(role_id)
         if role is None:
             await clear_autorole(member.guild.id)
+            return
+
+        me = member.guild.me
+        if me is None or role >= me.top_role:
             return
 
         try:
