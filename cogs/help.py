@@ -6,6 +6,8 @@ just dumping a plain command list.
 """
 
 # Keeping help readable matters because this bot has a lot of commands now.
+import inspect
+
 import discord
 from discord.ext import commands
 
@@ -15,7 +17,15 @@ from utils.embeds import make_embed
 
 def command_usage(command: commands.Command) -> str:
     """Return the command usage line, falling back to the qualified name."""
-    return command.usage or f"{PREFIX}{command.qualified_name}"
+    if command.usage:
+        return command.usage
+
+    docstring = inspect.getdoc(command.callback) or ""
+    for line in docstring.splitlines():
+        if line.lower().startswith("usage:"):
+            return line.split(":", 1)[1].strip()
+
+    return f"{PREFIX}{command.qualified_name}"
 
 
 class Help(commands.Cog, name="Help"):
@@ -72,14 +82,13 @@ class Help(commands.Cog, name="Help"):
             ),
             color=COLOR_INFO,
         )
-        embed.set_author(
-            name=ctx.guild.name,
-            icon_url=(
-                ctx.guild.icon.url
-                if ctx.guild.icon
-                else self.bot.user.display_avatar.url
-            ),
+        author_name = ctx.guild.name if ctx.guild else self.bot.user.name
+        author_icon = (
+            ctx.guild.icon.url
+            if ctx.guild and ctx.guild.icon
+            else self.bot.user.display_avatar.url
         )
+        embed.set_author(name=author_name, icon_url=author_icon)
 
         for cog_name, cog in self.bot.cogs.items():
             cog_commands = [cmd for cmd in cog.get_commands() if not cmd.hidden]

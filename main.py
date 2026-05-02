@@ -207,9 +207,14 @@ def acquire_lock():
     except (FileNotFoundError, json.JSONDecodeError):
         existing = None
 
-    if existing and _pid_is_running(int(existing.get("pid", 0))):
+    try:
+        existing_pid = int(existing.get("pid", 0)) if existing else 0
+    except (TypeError, ValueError):
+        existing_pid = 0
+
+    if existing and _pid_is_running(existing_pid):
         raise RuntimeError(
-            f"Another bot process is already running with PID {existing['pid']}."
+            f"Another bot process is already running with PID {existing_pid}."
         )
 
     try:
@@ -275,6 +280,20 @@ class MyBot(commands.Bot):
         )
         self.started_at = discord.utils.utcnow()
 
+    async def bot_check(self, ctx: commands.Context) -> bool:
+        """Keep server-only commands from crashing when used in DMs."""
+        if ctx.guild is not None:
+            return True
+
+        root_command = None
+        if ctx.command:
+            root_command = ctx.command.root_parent or ctx.command
+
+        if root_command and root_command.name in {"ping", "about", "help"}:
+            return True
+
+        raise commands.NoPrivateMessage()
+
     async def setup_hook(self):
         """Load all cogs before connecting so commands are ready immediately."""
         cogs_to_load = [
@@ -304,8 +323,8 @@ class MyBot(commands.Bot):
             try:
                 await self.load_extension(cog)
                 log.info("Loaded cog: %s", cog)
-            except Exception as exc:
-                log.error("Failed to load cog %s: %s", cog, exc)
+            except Exception:
+                log.exception("Failed to load cog: %s", cog)
 
         log.info("setup_hook complete")
 
@@ -335,6 +354,8 @@ class MyBot(commands.Bot):
 
     async def on_command_error(self, ctx: commands.Context, error):
         """Keep user-facing errors friendly while still logging real failures."""
+        error = getattr(error, "original", error)
+
         if isinstance(error, commands.CommandNotFound):
             attempted = (ctx.invoked_with or "").strip()
             if not attempted:
@@ -371,6 +392,21 @@ class MyBot(commands.Bot):
                     description=(
                         f"I do not have `{PREFIX}{attempted}`.\n\n"
                         f"Did you mean:\n{suggestions}"
+                    ),
+                    color=discord.Color.orange(),
+                )
+            )
+            return
+
+        if isinstance(error, commands.NoPrivateMessage):
+            await ctx.send(
+                embed=await make_embed(
+                    self,
+                    guild=None,
+                    title="Server Only",
+                    description=(
+                        "That command needs to be used inside a server where I can "
+                        "read roles, channels, and permissions."
                     ),
                     color=discord.Color.orange(),
                 )

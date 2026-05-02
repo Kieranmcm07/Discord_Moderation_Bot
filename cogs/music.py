@@ -447,8 +447,19 @@ class Music(commands.Cog, name="Music"):
                         )
                     self.bot.loop.call_soon_threadsafe(finished.set)
 
-                source = self.make_source(track, state)
-                voice.play(source, after=after_playback)
+                try:
+                    source = self.make_source(track, state)
+                    voice.play(source, after=after_playback)
+                except Exception:
+                    log.exception(
+                        "Failed to start music playback in guild %s for %s",
+                        guild.id,
+                        track.webpage_url,
+                    )
+                    state.now_playing = None
+                    state.restart_requested = False
+                    state.skip_requested = False
+                    break
 
                 await finished.wait()
 

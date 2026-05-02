@@ -76,7 +76,7 @@ class ServerManagement(commands.Cog, name="Server Management"):
                 try:
                     previous_message = await channel.fetch_message(previous_message_id)
                     await previous_message.delete()
-                except (discord.NotFound, discord.Forbidden):
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                     pass
 
             sticky_embed = discord.Embed(
@@ -533,6 +533,14 @@ class ServerManagement(commands.Cog, name="Server Management"):
                 )
             )
 
+        if len(content) > 4000:
+            return await ctx.send(
+                embed=discord.Embed(
+                    description="Sticky messages must be 4,000 characters or fewer.",
+                    color=COLOR_ERROR,
+                )
+            )
+
         existing_sticky = await get_sticky_message(channel.id)
         if existing_sticky and existing_sticky.get("bot_message_id"):
             try:
@@ -540,7 +548,7 @@ class ServerManagement(commands.Cog, name="Server Management"):
                     existing_sticky["bot_message_id"]
                 )
                 await old_message.delete()
-            except (discord.NotFound, discord.Forbidden):
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 pass
 
         existing_task = self._sticky_refresh_tasks.get(channel.id)
@@ -641,7 +649,7 @@ class ServerManagement(commands.Cog, name="Server Management"):
             try:
                 sticky_message = await channel.fetch_message(sticky["bot_message_id"])
                 await sticky_message.delete()
-            except (discord.NotFound, discord.Forbidden):
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 pass
 
         await clear_sticky_message(channel.id)

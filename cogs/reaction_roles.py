@@ -111,18 +111,30 @@ class ReactionRoles(commands.Cog, name="Reaction Roles"):
                 ephemeral=True,
             )
 
-        if role in interaction.user.roles:
-            await interaction.user.remove_roles(role, reason="Reaction role toggle")
+        try:
+            if role in interaction.user.roles:
+                await interaction.user.remove_roles(
+                    role, reason="Reaction role toggle"
+                )
+                return await interaction.response.send_message(
+                    f"Removed {role.mention}.",
+                    ephemeral=True,
+                )
+
+            await interaction.user.add_roles(role, reason="Reaction role toggle")
             return await interaction.response.send_message(
-                f"Removed {role.mention}.",
+                f"Added {role.mention}.",
                 ephemeral=True,
             )
-
-        await interaction.user.add_roles(role, reason="Reaction role toggle")
-        await interaction.response.send_message(
-            f"Added {role.mention}.",
-            ephemeral=True,
-        )
+        except (discord.Forbidden, discord.HTTPException):
+            message = (
+                "I could not update that role. Check my role position and "
+                "Manage Roles permission."
+            )
+            if interaction.response.is_done():
+                await interaction.followup.send(message, ephemeral=True)
+            else:
+                await interaction.response.send_message(message, ephemeral=True)
 
     @commands.command(name="rradd", help="Add or update a self-assignable role option.")
     @commands.has_permissions(manage_roles=True)
@@ -149,6 +161,16 @@ class ReactionRoles(commands.Cog, name="Reaction Roles"):
                 guild=ctx.guild,
                 title="Role Too High",
                 description="Move my role above that role first so I can assign it.",
+                color=COLOR_ERROR,
+            )
+            return await ctx.send(embed=embed)
+
+        if role >= ctx.author.top_role and ctx.author != ctx.guild.owner:
+            embed = await make_embed(
+                self.bot,
+                guild=ctx.guild,
+                title="Role Too High",
+                description="You can only make roles below your highest role self-assignable.",
                 color=COLOR_ERROR,
             )
             return await ctx.send(embed=embed)
