@@ -113,9 +113,7 @@ class ReactionRoles(commands.Cog, name="Reaction Roles"):
 
         try:
             if role in interaction.user.roles:
-                await interaction.user.remove_roles(
-                    role, reason="Reaction role toggle"
-                )
+                await interaction.user.remove_roles(role, reason="Reaction role toggle")
                 return await interaction.response.send_message(
                     f"Removed {role.mention}.",
                     ephemeral=True,

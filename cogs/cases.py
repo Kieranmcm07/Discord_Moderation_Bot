@@ -25,7 +25,6 @@ from utils.db import (
 from utils.embeds import make_embed
 from utils.time import parse_db_timestamp, unix_timestamp
 
-
 ACTION_LABELS = {
     "ban": "Ban",
     "softban": "Softban",

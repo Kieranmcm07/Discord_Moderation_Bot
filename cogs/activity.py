@@ -20,7 +20,6 @@ from utils.db import (
 )
 from utils.embeds import make_embed
 
-
 # Voice joins are only tracked while the bot is online, which is fine for a
 # lightweight local project. The next voice event starts a fresh timer cleanly.
 voice_join_times: dict[tuple[int, int], datetime] = {}

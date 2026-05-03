@@ -25,7 +25,6 @@ from config import BOT_TOKEN, OWNER_IDS, PREFIX
 from utils.db import get_custom_command, init_db
 from utils.embeds import decorate_embed, make_embed
 
-
 TOKEN_PLACEHOLDERS = {"YOUR_TOKEN_HERE", "YOUR_BOT_TOKEN_HERE"}
 
 

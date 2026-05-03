@@ -18,7 +18,6 @@ from utils.db import (
 )
 from utils.embeds import make_embed
 
-
 CUSTOM_NAME = re.compile(r"^[a-z0-9_-]{1,32}$")
 
 

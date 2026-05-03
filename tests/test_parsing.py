@@ -80,7 +80,9 @@ class ChatlogFormattingTests(unittest.TestCase):
 
         self.assertIn("Guild: Test Guild (123)", transcript)
         self.assertIn("Channel: #general (456)", transcript)
-        self.assertIn("[2026-05-02 12:30:00 UTC] Member#0001 (111): hello there", transcript)
+        self.assertIn(
+            "[2026-05-02 12:30:00 UTC] Member#0001 (111): hello there", transcript
+        )
 
 
 class HelperRegressionTests(unittest.IsolatedAsyncioTestCase):

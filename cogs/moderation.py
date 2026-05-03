@@ -30,7 +30,6 @@ from utils.db import (
 )
 from utils.time import parse_db_timestamp, unix_timestamp
 
-
 log = logging.getLogger(__name__)
 
 
@@ -1087,7 +1086,9 @@ class Moderation(commands.Cog, name="Moderation"):
             )
 
         messages = list(reversed(newest_first))
-        transcript = build_chatlog_text(ctx.guild, channel, ctx.author, messages, amount)
+        transcript = build_chatlog_text(
+            ctx.guild, channel, ctx.author, messages, amount
+        )
         payload = transcript.encode("utf-8")
         if len(payload) > MAX_CHATLOG_BYTES:
             return await ctx.send(

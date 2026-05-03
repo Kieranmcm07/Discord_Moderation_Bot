@@ -21,7 +21,6 @@ from config import (
 from utils.db import log_member_event, upsert_invite
 from utils.embeds import make_embed
 
-
 log = logging.getLogger(__name__)
 
 
@@ -60,7 +59,9 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
         except discord.Forbidden:
             pass
         except discord.HTTPException:
-            log.warning("Could not cache invites for guild %s.", guild.id, exc_info=True)
+            log.warning(
+                "Could not cache invites for guild %s.", guild.id, exc_info=True
+            )
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
@@ -188,7 +189,9 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
         try:
             await channel.send(embed=embed)
         except (discord.Forbidden, discord.HTTPException):
-            log.warning("Could not send leave log in guild %s.", guild.id, exc_info=True)
+            log.warning(
+                "Could not send leave log in guild %s.", guild.id, exc_info=True
+            )
 
     @commands.Cog.listener()
     async def on_invite_create(self, invite: discord.Invite):

@@ -33,7 +33,6 @@ from utils.db import (
     upsert_ticket_settings,
 )
 
-
 log = logging.getLogger(__name__)
 
 
@@ -157,9 +156,7 @@ class Tickets(commands.Cog, name="Tickets"):
         categories = await get_ticket_categories(guild_id)
         return next((item for item in categories if item["id"] == category_id), None)
 
-    async def _send_ephemeral(
-        self, interaction: discord.Interaction, message: str
-    ):
+    async def _send_ephemeral(self, interaction: discord.Interaction, message: str):
         if interaction.response.is_done():
             return await interaction.followup.send(message, ephemeral=True)
         return await interaction.response.send_message(message, ephemeral=True)
@@ -267,9 +264,7 @@ class Tickets(commands.Cog, name="Tickets"):
                 interaction.guild.id, interaction.user.id
             )
             if existing:
-                existing_channel = interaction.guild.get_channel(
-                    existing["channel_id"]
-                )
+                existing_channel = interaction.guild.get_channel(existing["channel_id"])
                 if not existing_channel:
                     await close_ticket(
                         existing["channel_id"],
@@ -278,9 +273,7 @@ class Tickets(commands.Cog, name="Tickets"):
                     existing = None
 
             if existing:
-                existing_channel = interaction.guild.get_channel(
-                    existing["channel_id"]
-                )
+                existing_channel = interaction.guild.get_channel(existing["channel_id"])
                 mention = (
                     existing_channel.mention
                     if existing_channel

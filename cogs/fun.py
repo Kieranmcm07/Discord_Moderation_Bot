@@ -12,7 +12,6 @@ from discord.ext import commands
 from config import COLOR_INFO, COLOR_SUCCESS
 from utils.embeds import make_embed
 
-
 EIGHT_BALL_ANSWERS = [
     "Yes, that looks likely.",
     "No, I would not count on it.",

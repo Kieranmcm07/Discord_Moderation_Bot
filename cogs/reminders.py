@@ -22,7 +22,6 @@ from utils.db import (
 )
 from utils.embeds import make_embed
 
-
 log = logging.getLogger(__name__)
 
 DURATION_PART = re.compile(

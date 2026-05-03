@@ -17,7 +17,6 @@ import yt_dlp
 
 from config import COLOR_ERROR, COLOR_INFO, COLOR_SUCCESS
 
-
 YTDL_FORMAT_OPTIONS = {
     "format": "bestaudio/best",
     "noplaylist": True,
@@ -797,8 +796,7 @@ class Music(commands.Cog, name="Music"):
     async def filters(self, ctx):
         """Usage: ,filters"""
         lines = [
-            f"`{name}` - {data['description']}"
-            for name, data in MUSIC_FILTERS.items()
+            f"`{name}` - {data['description']}" for name, data in MUSIC_FILTERS.items()
         ]
         await ctx.send(
             embed=discord.Embed(

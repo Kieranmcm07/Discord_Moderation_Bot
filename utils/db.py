@@ -42,8 +42,7 @@ async def init_db():
         os.makedirs(db_directory, exist_ok=True)
 
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS cases (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id    INTEGER NOT NULL,
@@ -54,11 +53,9 @@ async def init_db():
                 duration    TEXT,
                 created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS invites (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id    INTEGER NOT NULL,
@@ -67,11 +64,9 @@ async def init_db():
                 uses        INTEGER DEFAULT 0,
                 UNIQUE(guild_id, code)
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS message_stats (
                 guild_id    INTEGER NOT NULL,
                 user_id     INTEGER NOT NULL,
@@ -79,22 +74,18 @@ async def init_db():
                 count       INTEGER DEFAULT 0,
                 PRIMARY KEY (guild_id, user_id, day)
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS voice_stats (
                 guild_id    INTEGER NOT NULL,
                 user_id     INTEGER NOT NULL,
                 minutes     INTEGER DEFAULT 0,
                 PRIMARY KEY (guild_id, user_id)
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS member_log (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id    INTEGER NOT NULL,
@@ -102,43 +93,35 @@ async def init_db():
                 event       TEXT NOT NULL,
                 created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS mutes (
                 guild_id    INTEGER NOT NULL,
                 user_id     INTEGER NOT NULL,
                 expires_at  TIMESTAMP,
                 PRIMARY KEY (guild_id, user_id)
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS ticket_settings (
                 guild_id         INTEGER PRIMARY KEY,
                 category_id      INTEGER,
                 log_channel_id   INTEGER,
                 panel_channel_id INTEGER
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS ticket_roles (
                 guild_id INTEGER NOT NULL,
                 role_id  INTEGER NOT NULL,
                 PRIMARY KEY (guild_id, role_id)
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS ticket_categories (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id    INTEGER NOT NULL,
@@ -147,11 +130,9 @@ async def init_db():
                 description TEXT,
                 UNIQUE(guild_id, name)
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS tickets (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id        INTEGER NOT NULL,
@@ -163,18 +144,14 @@ async def init_db():
                 closed_at       TIMESTAMP,
                 closed_by_id    INTEGER
             )
-            """
-        )
-        await db.execute(
-            """
+            """)
+        await db.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS tickets_one_open_per_user
             ON tickets (guild_id, user_id)
             WHERE status='open'
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS escalation_rules (
                 guild_id    INTEGER NOT NULL,
                 warn_count  INTEGER NOT NULL,
@@ -182,11 +159,9 @@ async def init_db():
                 duration    TEXT,
                 PRIMARY KEY (guild_id, warn_count)
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS temp_bans (
                 guild_id    INTEGER NOT NULL,
                 user_id     INTEGER NOT NULL,
@@ -195,20 +170,16 @@ async def init_db():
                 expires_at  TIMESTAMP NOT NULL,
                 PRIMARY KEY (guild_id, user_id)
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS autorole_settings (
                 guild_id INTEGER PRIMARY KEY,
                 role_id  INTEGER NOT NULL
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS sticky_messages (
                 guild_id       INTEGER NOT NULL,
                 channel_id     INTEGER PRIMARY KEY,
@@ -216,11 +187,9 @@ async def init_db():
                 created_by_id  INTEGER NOT NULL,
                 bot_message_id INTEGER
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS guild_settings (
                 guild_id            INTEGER PRIMARY KEY,
                 welcome_channel_id  INTEGER,
@@ -230,8 +199,7 @@ async def init_db():
                 embed_color         INTEGER,
                 mod_log_channel_id  INTEGER
             )
-            """
-        )
+            """)
 
         await ensure_columns(
             db,
@@ -248,8 +216,7 @@ async def init_db():
             },
         )
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS reaction_roles (
                 guild_id    INTEGER NOT NULL,
                 role_id     INTEGER NOT NULL,
@@ -257,11 +224,9 @@ async def init_db():
                 emoji       TEXT,
                 PRIMARY KEY (guild_id, role_id)
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS sentinel_settings (
                 guild_id             INTEGER PRIMARY KEY,
                 enabled              INTEGER NOT NULL DEFAULT 1,
@@ -269,11 +234,9 @@ async def init_db():
                 alert_threshold       INTEGER NOT NULL DEFAULT 70,
                 auto_timeout_seconds  INTEGER NOT NULL DEFAULT 0
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS sentinel_incidents (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id    INTEGER NOT NULL,
@@ -283,11 +246,9 @@ async def init_db():
                 reasons     TEXT NOT NULL,
                 created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS reminders (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 guild_id    INTEGER NOT NULL,
@@ -297,17 +258,13 @@ async def init_db():
                 due_at      TIMESTAMP NOT NULL,
                 created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
-        )
-        await db.execute(
-            """
+            """)
+        await db.execute("""
             CREATE INDEX IF NOT EXISTS reminders_due_at_idx
             ON reminders (due_at)
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS custom_commands (
                 guild_id      INTEGER NOT NULL,
                 name          TEXT NOT NULL,
@@ -317,11 +274,9 @@ async def init_db():
                 updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (guild_id, name)
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS afk_statuses (
                 guild_id    INTEGER NOT NULL,
                 user_id     INTEGER NOT NULL,
@@ -329,11 +284,9 @@ async def init_db():
                 created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (guild_id, user_id)
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS automod_settings (
                 guild_id             INTEGER PRIMARY KEY,
                 enabled              INTEGER NOT NULL DEFAULT 1,
@@ -342,11 +295,9 @@ async def init_db():
                 mass_mention_limit    INTEGER NOT NULL DEFAULT 6,
                 warn_on_trigger       INTEGER NOT NULL DEFAULT 0
             )
-            """
-        )
+            """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS automod_blocked_terms (
                 guild_id    INTEGER NOT NULL,
                 term        TEXT NOT NULL,
@@ -354,8 +305,7 @@ async def init_db():
                 created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (guild_id, term)
             )
-            """
-        )
+            """)
 
         # These light migrations let people pull new code without deleting their
         # old SQLite database. New installs already have the same columns.
@@ -1381,7 +1331,9 @@ async def get_user_reminders(guild_id, user_id, limit: int = 10) -> list[dict]:
             return [dict(row) for row in rows]
 
 
-async def delete_reminder(guild_id, reminder_id: int, user_id: int | None = None) -> bool:
+async def delete_reminder(
+    guild_id, reminder_id: int, user_id: int | None = None
+) -> bool:
     """Delete one reminder, optionally restricted to its creator."""
     query = "DELETE FROM reminders WHERE guild_id=? AND id=?"
     params: list = [guild_id, reminder_id]

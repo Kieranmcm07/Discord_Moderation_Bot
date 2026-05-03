@@ -30,7 +30,6 @@ from utils.db import (
 )
 from utils.embeds import make_embed
 
-
 log = logging.getLogger(__name__)
 
 INVITE_PATTERN = re.compile(
@@ -111,7 +110,9 @@ class AutoMod(commands.Cog, name="AutoMod"):
 
         return triggers
 
-    async def handle_trigger(self, message: discord.Message, triggers: list[str], settings: dict):
+    async def handle_trigger(
+        self, message: discord.Message, triggers: list[str], settings: dict
+    ):
         try:
             await message.delete()
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
@@ -195,11 +196,15 @@ class AutoMod(commands.Cog, name="AutoMod"):
             description="Persistent rules for blocked terms, invites, links, and mass mentions.",
             color=COLOR_INFO,
         )
-        embed.add_field(name="Status", value=bool_text(settings["enabled"]), inline=True)
+        embed.add_field(
+            name="Status", value=bool_text(settings["enabled"]), inline=True
+        )
         embed.add_field(
             name="Invites", value=bool_text(settings["delete_invites"]), inline=True
         )
-        embed.add_field(name="Links", value=bool_text(settings["delete_links"]), inline=True)
+        embed.add_field(
+            name="Links", value=bool_text(settings["delete_links"]), inline=True
+        )
         embed.add_field(
             name="Mass Mentions",
             value=(
@@ -236,7 +241,9 @@ class AutoMod(commands.Cog, name="AutoMod"):
     async def automod_on(self, ctx):
         await upsert_automod_settings(ctx.guild.id, enabled=1)
         await ctx.send(
-            embed=discord.Embed(description="AutoMod is now enabled.", color=COLOR_SUCCESS)
+            embed=discord.Embed(
+                description="AutoMod is now enabled.", color=COLOR_SUCCESS
+            )
         )
 
     @automod.command(name="off", help="Disable AutoMod.")
@@ -244,7 +251,9 @@ class AutoMod(commands.Cog, name="AutoMod"):
     async def automod_off(self, ctx):
         await upsert_automod_settings(ctx.guild.id, enabled=0)
         await ctx.send(
-            embed=discord.Embed(description="AutoMod is now disabled.", color=COLOR_SUCCESS)
+            embed=discord.Embed(
+                description="AutoMod is now disabled.", color=COLOR_SUCCESS
+            )
         )
 
     @automod.command(name="invites", help="Delete Discord invite links on or off.")
@@ -352,9 +361,7 @@ class AutoMod(commands.Cog, name="AutoMod"):
         await ctx.send(
             embed=discord.Embed(
                 description=(
-                    f"Blocked `{term}`."
-                    if added
-                    else f"`{term}` is already blocked."
+                    f"Blocked `{term}`." if added else f"`{term}` is already blocked."
                 ),
                 color=COLOR_SUCCESS if added else COLOR_INFO,
             )

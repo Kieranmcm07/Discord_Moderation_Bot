@@ -28,7 +28,6 @@ from utils.db import (
 )
 from utils.embeds import make_embed
 
-
 log = logging.getLogger(__name__)
 
 
@@ -161,8 +160,7 @@ class Configuration(commands.Cog, name="Configuration"):
         message_log_channel_id = settings.get("message_log_channel_id")
         message_log_channel = (
             ctx.guild.get_channel(message_log_channel_id).mention
-            if message_log_channel_id
-            and ctx.guild.get_channel(message_log_channel_id)
+            if message_log_channel_id and ctx.guild.get_channel(message_log_channel_id)
             else "Not set"
         )
 

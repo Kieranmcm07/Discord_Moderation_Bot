@@ -40,9 +40,7 @@ class AFK(commands.Cog, name="AFK"):
         content = message.content.strip().lower()
         prefixes = [PREFIX.lower()]
         if self.bot.user:
-            prefixes.extend(
-                [f"<@{self.bot.user.id}> ", f"<@!{self.bot.user.id}> "]
-            )
+            prefixes.extend([f"<@{self.bot.user.id}> ", f"<@!{self.bot.user.id}> "])
         return any(
             content.startswith(f"{prefix}{name}")
             for prefix in prefixes
@@ -96,11 +94,7 @@ class AFK(commands.Cog, name="AFK"):
                 continue
 
             created_at = parse_sqlite_timestamp(status["created_at"])
-            since = (
-                f" <t:{int(created_at.timestamp())}:R>"
-                if created_at
-                else ""
-            )
+            since = f" <t:{int(created_at.timestamp())}:R>" if created_at else ""
             reason = status["reason"]
             if len(reason) > 120:
                 reason = f"{reason[:117]}..."

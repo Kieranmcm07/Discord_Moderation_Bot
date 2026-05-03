@@ -29,7 +29,6 @@ from utils.db import (
     update_sticky_message_id,
 )
 
-
 log = logging.getLogger(__name__)
 
 NUMBER_EMOJIS = [

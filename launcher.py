@@ -11,7 +11,6 @@ import tempfile
 import time
 from pathlib import Path
 
-
 BOOT_BANNER = r"""
     ____  _                       _   ____        _   
    |  _ \(_)___  ___ ___  _ __ __| | | __ )  ___ | |_ 

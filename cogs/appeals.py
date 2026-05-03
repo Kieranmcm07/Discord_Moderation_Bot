@@ -31,7 +31,6 @@ from utils.db import (
 from utils.embeds import make_embed
 from utils.time import unix_timestamp
 
-
 log = logging.getLogger(__name__)
 
 
@@ -294,7 +293,9 @@ class Appeals(commands.Cog, name="Appeals"):
             embed.add_field(name="Case", value=f"#{case_id}", inline=True)
             embed.add_field(name="Action", value=case["action"].title(), inline=True)
             embed.add_field(name="Case Date", value=case_date, inline=True)
-            embed.add_field(name="Original Moderator", value=str(moderator), inline=True)
+            embed.add_field(
+                name="Original Moderator", value=str(moderator), inline=True
+            )
             embed.add_field(
                 name="Total User Cases",
                 value=str(len(history)),
@@ -402,9 +403,9 @@ class Appeals(commands.Cog, name="Appeals"):
         )
 
     async def _decide_appeal(self, ctx, decision: str, note: str):
-        if not isinstance(ctx.author, discord.Member) or not await self._is_appeal_staff(
-            ctx.author
-        ):
+        if not isinstance(
+            ctx.author, discord.Member
+        ) or not await self._is_appeal_staff(ctx.author):
             return await ctx.send(
                 embed=await make_embed(
                     self.bot,
@@ -415,7 +416,11 @@ class Appeals(commands.Cog, name="Appeals"):
             )
 
         ticket = await get_ticket_by_channel(ctx.channel.id)
-        if not ticket or ticket["status"] != "open" or ticket["category_name"] != "Appeal":
+        if (
+            not ticket
+            or ticket["status"] != "open"
+            or ticket["category_name"] != "Appeal"
+        ):
             return await ctx.send(
                 embed=await make_embed(
                     self.bot,
@@ -476,9 +481,9 @@ class Appeals(commands.Cog, name="Appeals"):
     @appeal.command(name="close", help="Close the current appeal ticket.")
     async def appeal_close(self, ctx):
         """Usage: ,appeal close"""
-        if not isinstance(ctx.author, discord.Member) or not await self._is_appeal_staff(
-            ctx.author
-        ):
+        if not isinstance(
+            ctx.author, discord.Member
+        ) or not await self._is_appeal_staff(ctx.author):
             return await ctx.send(
                 embed=await make_embed(
                     self.bot,
@@ -489,7 +494,11 @@ class Appeals(commands.Cog, name="Appeals"):
             )
 
         ticket = await get_ticket_by_channel(ctx.channel.id)
-        if not ticket or ticket["status"] != "open" or ticket["category_name"] != "Appeal":
+        if (
+            not ticket
+            or ticket["status"] != "open"
+            or ticket["category_name"] != "Appeal"
+        ):
             return await ctx.send(
                 embed=await make_embed(
                     self.bot,

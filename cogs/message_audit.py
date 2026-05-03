@@ -13,7 +13,6 @@ from discord.ext import commands
 from config import COLOR_INFO, COLOR_WARN
 from utils.db import get_guild_settings
 
-
 MAX_FIELD_LENGTH = 1024
 log = logging.getLogger(__name__)
 
@@ -50,9 +49,7 @@ class MessageAudit(commands.Cog, name="Message Audit"):
     def __init__(self, bot):
         self.bot = bot
 
-    async def get_log_channel(
-        self, guild: discord.Guild
-    ) -> discord.TextChannel | None:
+    async def get_log_channel(self, guild: discord.Guild) -> discord.TextChannel | None:
         settings = await get_guild_settings(guild.id) or {}
         channel_id = settings.get("message_log_channel_id")
         if not channel_id:
