@@ -461,6 +461,21 @@ class MyBot(commands.Bot):
             )
             return
 
+        if isinstance(error, commands.BadUnionArgument):
+            await ctx.send(
+                embed=await make_embed(
+                    self,
+                    guild=ctx.guild,
+                    title="Bad Argument",
+                    description=(
+                        "I could not find that member or user. Try a mention, "
+                        "user ID, or exact username."
+                    ),
+                    color=discord.Color.orange(),
+                )
+            )
+            return
+
         if isinstance(error, commands.BadArgument):
             await ctx.send(
                 embed=await make_embed(
@@ -468,6 +483,26 @@ class MyBot(commands.Bot):
                     guild=ctx.guild,
                     title="Bad Argument",
                     description="That input does not match what the command expects. Try a valid mention, role, channel, or number.",
+                    color=discord.Color.orange(),
+                )
+            )
+            return
+
+        if isinstance(error, commands.UserInputError):
+            usage_hint = (
+                f" Try `{PREFIX}help {ctx.command.qualified_name}` for usage."
+                if ctx.command
+                else ""
+            )
+            await ctx.send(
+                embed=await make_embed(
+                    self,
+                    guild=ctx.guild,
+                    title="Bad Input",
+                    description=(
+                        "That input does not match what the command expects."
+                        f"{usage_hint}"
+                    ),
                     color=discord.Color.orange(),
                 )
             )
