@@ -1,3 +1,7 @@
+# ============================================================
+#   Made by Kieranmcm07 on GitHub
+#   GitHub: https://github.com/Kieranmcm07
+# ============================================================
 """
 cogs/tickets.py - private support ticket system.
 Users open tickets from a button panel, the bot creates a private channel,

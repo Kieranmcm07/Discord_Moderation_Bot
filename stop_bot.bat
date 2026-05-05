@@ -1,3 +1,7 @@
+@REM ============================================================
+@REM   Made by Kieranmcm07 on GitHub
+@REM   GitHub: https://github.com/Kieranmcm07
+@REM ============================================================
 @echo off
 setlocal EnableDelayedExpansion
 title Stop Discord Moderation Bot

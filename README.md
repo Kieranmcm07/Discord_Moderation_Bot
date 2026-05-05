@@ -1,3 +1,9 @@
+<!--
+  ============================================================
+    Made by Kieranmcm07 on GitHub
+    GitHub: https://github.com/Kieranmcm07
+  ============================================================
+-->
 # Discord Moderation Bot
 
 A practical `discord.py` moderation and server-management bot with SQLite

@@ -1,3 +1,7 @@
+@REM ============================================================
+@REM   Made by Kieranmcm07 on GitHub
+@REM   GitHub: https://github.com/Kieranmcm07
+@REM ============================================================
 @echo off
 setlocal
 title Remove Discord Moderation Bot Startup

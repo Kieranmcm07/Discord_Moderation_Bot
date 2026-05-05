@@ -1,3 +1,7 @@
+# ============================================================
+#   Made by Kieranmcm07 on GitHub
+#   GitHub: https://github.com/Kieranmcm07
+# ============================================================
 """Friendly Windows launcher that shows boot logs, then leaves the bot running."""
 
 # This is mostly quality-of-life for running my own bot from a double-click.

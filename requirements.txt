@@ -1,3 +1,7 @@
+# ============================================================
+#   Made by Kieranmcm07 on GitHub
+#   GitHub: https://github.com/Kieranmcm07
+# ============================================================
 # Stuff the bot needs to run. Install with: pip install -r requirements.txt
 
 discord.py>=2.3.0
