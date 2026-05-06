@@ -14,6 +14,7 @@ project easier to reason about.
 import argparse
 import asyncio
 import atexit
+import contextlib
 import ctypes
 import difflib
 import json
@@ -25,8 +26,15 @@ from pathlib import Path
 import discord
 from discord.ext import commands
 
-from config import BOT_TOKEN, OWNER_IDS, PREFIX
-from utils.db import get_custom_command, init_db
+from config import (
+    BOT_TOKEN,
+    OFFLINE_NOTICE_MESSAGE,
+    OFFLINE_PRESENCE_MESSAGE,
+    OWNER_IDS,
+    PREFIX,
+    resolve_offline_notice_channel_id,
+)
+from utils.db import get_custom_command, get_guild_settings, init_db
 from utils.embeds import decorate_embed, make_embed
 
 TOKEN_PLACEHOLDERS = {"YOUR_TOKEN_HERE", "YOUR_BOT_TOKEN_HERE"}
@@ -56,6 +64,7 @@ def parse_args():
 ARGS = parse_args()
 STATUS_FILE = Path(ARGS.status_file).resolve() if ARGS.status_file else None
 LOCK_FILE = Path(tempfile.gettempdir()) / "discord_mod_bot.lock"
+STOP_REQUEST_FILE = Path(tempfile.gettempdir()) / "discord_mod_bot_stop.json"
 LOCK_ACQUIRED = False
 
 
@@ -249,6 +258,15 @@ def render_custom_response(template: str, ctx: commands.Context) -> str:
     )
 
 
+def render_offline_notice(template: str, guild: discord.Guild) -> str:
+    """Apply simple placeholders to the graceful shutdown notice."""
+    return (
+        (template or OFFLINE_NOTICE_MESSAGE)
+        .replace("{server}", guild.name)
+        .replace("{prefix}", PREFIX)
+    )
+
+
 configure_logging()
 log = logging.getLogger("bot")
 atexit.register(release_lock)
@@ -291,6 +309,8 @@ class MyBot(commands.Bot):
             case_insensitive=True,
         )
         self.started_at = discord.utils.utcnow()
+        self._shutdown_notice_sent = False
+        self._stop_watcher_task: asyncio.Task | None = None
 
     async def bot_check(self, ctx: commands.Context) -> bool:
         """Keep server-only commands from crashing when used in DMs."""
@@ -339,10 +359,140 @@ class MyBot(commands.Bot):
                 log.exception("Failed to load cog: %s", cog)
 
         log.info("setup_hook complete")
+        self._stop_watcher_task = asyncio.create_task(
+            self.watch_stop_requests(),
+            name="stop-request-watcher",
+        )
 
     async def get_context(self, origin, /, *, cls=commands.Context):
         """Always return our branded context subclass."""
         return await super().get_context(origin, cls=BotContext)
+
+    def stop_request_matches_this_process(self) -> bool:
+        """Return whether the launcher asked this bot process to stop."""
+        try:
+            payload = json.loads(STOP_REQUEST_FILE.read_text(encoding="utf-8-sig"))
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            return False
+
+        raw_ids = payload.get("pids")
+        if raw_ids is None:
+            raw_ids = [payload.get("pid")]
+        elif not isinstance(raw_ids, list):
+            raw_ids = [raw_ids]
+
+        requested_ids = set()
+        for raw_id in raw_ids:
+            try:
+                requested_ids.add(int(raw_id))
+            except (TypeError, ValueError):
+                continue
+
+        return os.getpid() in requested_ids
+
+    async def watch_stop_requests(self):
+        """Watch for the Windows helper script's graceful shutdown request."""
+        try:
+            await self.wait_until_ready()
+            while not self.is_closed():
+                if self.stop_request_matches_this_process():
+                    log.info("Graceful stop request received from stop_bot.bat")
+                    write_status("stopping", "Graceful shutdown requested...")
+                    try:
+                        STOP_REQUEST_FILE.unlink()
+                    except FileNotFoundError:
+                        pass
+                    await self.close()
+                    return
+
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("Stop request watcher failed")
+
+    async def close(self):
+        """Send a best-effort shutdown notice before disconnecting."""
+        await self.send_shutdown_notice()
+
+        current_task = asyncio.current_task()
+        if self._stop_watcher_task and self._stop_watcher_task is not current_task:
+            self._stop_watcher_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._stop_watcher_task
+
+        await super().close()
+
+    async def send_shutdown_notice(self):
+        """Post the configured offline notice and briefly update public presence."""
+        if self._shutdown_notice_sent or not self.is_ready():
+            return
+
+        self._shutdown_notice_sent = True
+        write_status("stopping", "Sending offline notice...")
+
+        try:
+            await self.change_presence(
+                status=discord.Status.idle,
+                activity=discord.Activity(
+                    type=discord.ActivityType.watching,
+                    name=OFFLINE_PRESENCE_MESSAGE or "Going offline",
+                ),
+            )
+        except discord.HTTPException:
+            log.warning("Could not update offline presence.", exc_info=True)
+
+        sent_channel_ids: set[int] = set()
+        sent_count = 0
+        for guild in list(self.guilds):
+            settings = await get_guild_settings(guild.id) or {}
+            channel_id = resolve_offline_notice_channel_id(settings)
+            if not channel_id or channel_id in sent_channel_ids:
+                continue
+
+            get_channel_or_thread = getattr(guild, "get_channel_or_thread", None)
+            if get_channel_or_thread:
+                channel = get_channel_or_thread(channel_id)
+            else:
+                channel = guild.get_channel(channel_id)
+
+            if channel is None:
+                channel = self.get_channel(channel_id)
+                if getattr(getattr(channel, "guild", None), "id", None) != guild.id:
+                    channel = None
+
+            if channel is None or not hasattr(channel, "send"):
+                log.warning(
+                    "Offline notice channel %s was not found in guild %s.",
+                    channel_id,
+                    guild.id,
+                )
+                continue
+
+            embed = await make_embed(
+                self,
+                guild=guild,
+                title="Bot Going Offline",
+                description=render_offline_notice(OFFLINE_NOTICE_MESSAGE, guild),
+                color=discord.Color.orange(),
+            )
+
+            try:
+                await channel.send(embed=embed)
+            except (discord.Forbidden, discord.HTTPException):
+                log.warning(
+                    "Could not send offline notice in channel %s.",
+                    channel_id,
+                    exc_info=True,
+                )
+                continue
+
+            sent_channel_ids.add(channel_id)
+            sent_count += 1
+
+        if sent_count:
+            log.info("Sent offline notice to %s channel(s).", sent_count)
+            await asyncio.sleep(1)
 
     async def on_ready(self):
         """Log a clean ready message and refresh the public presence text."""

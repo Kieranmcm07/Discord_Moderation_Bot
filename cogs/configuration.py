@@ -15,8 +15,14 @@ import logging
 import discord
 from discord.ext import commands
 
-from config import COLOR_ERROR, COLOR_SUCCESS, resolve_mod_log_channel_id
+from config import (
+    COLOR_ERROR,
+    COLOR_SUCCESS,
+    resolve_mod_log_channel_id,
+    resolve_offline_notice_channel_id,
+)
 from utils.db import (
+    clear_offline_notice_channel,
     get_all_sticky_messages,
     get_automod_settings,
     get_autorole,
@@ -167,6 +173,13 @@ class Configuration(commands.Cog, name="Configuration"):
             if message_log_channel_id and ctx.guild.get_channel(message_log_channel_id)
             else "Not set"
         )
+        offline_notice_channel_id = resolve_offline_notice_channel_id(settings)
+        offline_notice_channel = (
+            ctx.guild.get_channel(offline_notice_channel_id).mention
+            if offline_notice_channel_id
+            and ctx.guild.get_channel(offline_notice_channel_id)
+            else "Not set"
+        )
 
         embed.add_field(
             name="Welcome",
@@ -184,6 +197,11 @@ class Configuration(commands.Cog, name="Configuration"):
         embed.add_field(name="Mod Log Channel", value=mod_log_channel, inline=False)
         embed.add_field(
             name="Message Log Channel", value=message_log_channel, inline=False
+        )
+        embed.add_field(
+            name="Offline Notice Channel",
+            value=offline_notice_channel,
+            inline=False,
         )
         embed.add_field(name="Sticky Messages", value=str(len(stickies)), inline=True)
         embed.add_field(
@@ -436,6 +454,75 @@ class Configuration(commands.Cog, name="Configuration"):
             guild=ctx.guild,
             title="Message Log Cleared",
             description="Deleted and edited message logging has been disabled.",
+            color=COLOR_SUCCESS,
+        )
+        await ctx.send(embed=embed)
+
+    @commands.command(
+        name="setofflinechannel",
+        aliases=["offlinenoticechannel", "setofflinenotice"],
+        help="Set the channel used for graceful shutdown notices.",
+    )
+    @commands.has_permissions(manage_guild=True)
+    async def setofflinechannel(self, ctx, channel: discord.TextChannel):
+        await upsert_guild_settings(
+            ctx.guild.id, offline_notice_channel_id=channel.id
+        )
+        embed = await make_embed(
+            self.bot,
+            guild=ctx.guild,
+            title="Offline Notice Updated",
+            description=(
+                f"I will post in {channel.mention} before going offline when "
+                "the bot is stopped gracefully."
+            ),
+            color=COLOR_SUCCESS,
+        )
+        await ctx.send(embed=embed)
+
+    @commands.command(
+        name="viewofflinechannel",
+        aliases=["offlinenoticestatus"],
+        help="Show the current graceful shutdown notice channel.",
+    )
+    @commands.has_permissions(manage_guild=True)
+    async def viewofflinechannel(self, ctx):
+        settings = await get_guild_settings(ctx.guild.id) or {}
+        channel_id = resolve_offline_notice_channel_id(settings)
+        channel = ctx.guild.get_channel(channel_id) if channel_id else None
+
+        if not channel:
+            embed = await make_embed(
+                self.bot,
+                guild=ctx.guild,
+                title="Offline Notice",
+                description="No graceful shutdown notice channel is configured.",
+                color=COLOR_ERROR,
+            )
+            return await ctx.send(embed=embed)
+
+        embed = await make_embed(
+            self.bot,
+            guild=ctx.guild,
+            title="Offline Notice",
+            description=f"Graceful shutdown notices are sent to {channel.mention}.",
+            color=COLOR_SUCCESS,
+        )
+        await ctx.send(embed=embed)
+
+    @commands.command(
+        name="clearofflinechannel",
+        aliases=["removeofflinechannel", "clearofflinenotice"],
+        help="Disable graceful shutdown notices.",
+    )
+    @commands.has_permissions(manage_guild=True)
+    async def clearofflinechannel(self, ctx):
+        await clear_offline_notice_channel(ctx.guild.id)
+        embed = await make_embed(
+            self.bot,
+            guild=ctx.guild,
+            title="Offline Notice Cleared",
+            description="Graceful shutdown notices have been disabled for this server.",
             color=COLOR_SUCCESS,
         )
         await ctx.send(embed=embed)

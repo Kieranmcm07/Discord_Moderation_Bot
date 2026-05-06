@@ -50,6 +50,35 @@ if not defined BOT_PIDS (
     exit /b 1
 )
 
+set "STOPPED_PIDS=%BOT_PIDS%"
+set "STOP_FILE=%TEMP%\discord_mod_bot_stop.json"
+
+echo Requesting graceful shutdown so the bot can notify Discord...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$rawIds = '!BOT_PIDS!'.Trim() -split '\s+';" ^
+  "$ids = foreach ($rawId in $rawIds) { if ($rawId) { [int]$rawId } };" ^
+  "$payload = @{ pids = @($ids); requested_at = (Get-Date).ToString('o') };" ^
+  "$json = ConvertTo-Json -Compress -InputObject $payload;" ^
+  "Set-Content -LiteralPath (Join-Path $env:TEMP 'discord_mod_bot_stop.json') -Value $json -Encoding UTF8"
+if errorlevel 1 (
+    echo Could not create the graceful shutdown request. Force stopping instead...
+    goto FORCE_STOP
+)
+
+echo Waiting for the bot to send its offline notice...
+for /L %%S in (1,1,25) do (
+    set "STILL_RUNNING="
+    for %%P in (%BOT_PIDS%) do (
+        tasklist /FI "PID eq %%P" | find "%%P" >nul
+        if not errorlevel 1 set "STILL_RUNNING=1"
+    )
+    if not defined STILL_RUNNING goto STOP_CONFIRMED
+    timeout /t 1 /nobreak >nul
+)
+
+echo Graceful shutdown did not finish in time. Force stopping instead...
+
+:FORCE_STOP
 set "STOPPED_PIDS="
 for %%P in (%BOT_PIDS%) do (
     tasklist /FI "PID eq %%P" | find "%%P" >nul
@@ -93,4 +122,5 @@ echo     ^|____/ \___/ \__^| ^|_^|\_\_^|_^|_^|\___^|\__,_^|
 echo.                                      
 echo     Bot process(es)%STOPPED_PIDS% stopped.
 del "%LOCK_FILE%" >nul 2>&1
+del "%STOP_FILE%" >nul 2>&1
 if "%PAUSE_ON_EXIT%"=="1" pause

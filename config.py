@@ -37,6 +37,13 @@ def resolve_mod_log_channel_id(settings: dict | None = None) -> int:
     return MOD_LOG_CHANNEL_ID
 
 
+def resolve_offline_notice_channel_id(settings: dict | None = None) -> int:
+    """Return a guild offline notice override, falling back to the environment default."""
+    if settings and settings.get("offline_notice_channel_id") is not None:
+        return int(settings.get("offline_notice_channel_id") or 0)
+    return OFFLINE_NOTICE_CHANNEL_ID
+
+
 # Core startup settings.
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 PREFIX = os.getenv("PREFIX", ",")
@@ -58,6 +65,16 @@ DB_PATH = os.getenv("DB_PATH", "data/bot.db")
 MOD_LOG_CHANNEL_ID = parse_int_env("MOD_LOG_CHANNEL_ID")
 INVITE_LOG_CHANNEL_ID = parse_int_env("INVITE_LOG_CHANNEL_ID")
 JOIN_LOG_CHANNEL_ID = parse_int_env("JOIN_LOG_CHANNEL_ID")
+OFFLINE_NOTICE_CHANNEL_ID = parse_int_env("OFFLINE_NOTICE_CHANNEL_ID")
+OFFLINE_NOTICE_MESSAGE = os.getenv(
+    "OFFLINE_NOTICE_MESSAGE",
+    "I am going offline because the computer running me is shutting down. "
+    "Commands will be unavailable until the bot starts again.",
+).strip()
+OFFLINE_PRESENCE_MESSAGE = os.getenv(
+    "OFFLINE_PRESENCE_MESSAGE",
+    "Going offline",
+).strip()
 
 # Default color palette used when a guild has not set its own theme.
 COLOR_SUCCESS = 0x57F287
