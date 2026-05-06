@@ -201,8 +201,7 @@ async def init_db():
                 welcome_message     TEXT,
                 leave_message       TEXT,
                 embed_color         INTEGER,
-                mod_log_channel_id  INTEGER,
-                offline_notice_channel_id INTEGER
+                mod_log_channel_id  INTEGER
             )
             """)
 
@@ -218,7 +217,6 @@ async def init_db():
                 "embed_image_url": "TEXT",
                 "mod_log_channel_id": "INTEGER",
                 "message_log_channel_id": "INTEGER",
-                "offline_notice_channel_id": "INTEGER",
             },
         )
 
@@ -832,7 +830,6 @@ async def upsert_guild_settings(
     embed_image_url=None,
     mod_log_channel_id=None,
     message_log_channel_id=None,
-    offline_notice_channel_id=None,
 ):
     """Create or update the stored guild settings without losing untouched fields."""
     current = await get_guild_settings(guild_id) or {}
@@ -873,11 +870,6 @@ async def upsert_guild_settings(
             if message_log_channel_id is not None
             else current.get("message_log_channel_id")
         ),
-        "offline_notice_channel_id": (
-            offline_notice_channel_id
-            if offline_notice_channel_id is not None
-            else current.get("offline_notice_channel_id")
-        ),
     }
 
     async with aiosqlite.connect(DB_PATH) as db:
@@ -886,9 +878,8 @@ async def upsert_guild_settings(
             INSERT INTO guild_settings (
                 guild_id, welcome_channel_id, leave_channel_id,
                 welcome_message, leave_message, embed_color, embed_image_url,
-                mod_log_channel_id, message_log_channel_id,
-                offline_notice_channel_id
-            ) VALUES (?,?,?,?,?,?,?,?,?,?)
+                mod_log_channel_id, message_log_channel_id
+            ) VALUES (?,?,?,?,?,?,?,?,?)
             ON CONFLICT(guild_id) DO UPDATE SET
             welcome_channel_id=excluded.welcome_channel_id,
             leave_channel_id=excluded.leave_channel_id,
@@ -897,8 +888,7 @@ async def upsert_guild_settings(
             embed_color=excluded.embed_color,
             embed_image_url=excluded.embed_image_url,
             mod_log_channel_id=excluded.mod_log_channel_id,
-            message_log_channel_id=excluded.message_log_channel_id,
-            offline_notice_channel_id=excluded.offline_notice_channel_id
+            message_log_channel_id=excluded.message_log_channel_id
             """,
             (
                 guild_id,
@@ -910,7 +900,6 @@ async def upsert_guild_settings(
                 values["embed_image_url"],
                 values["mod_log_channel_id"],
                 values["message_log_channel_id"],
-                values["offline_notice_channel_id"],
             ),
         )
         await db.commit()
@@ -962,11 +951,6 @@ async def clear_message_log_channel(guild_id):
         mod_log_channel_id=current.get("mod_log_channel_id"),
         message_log_channel_id=0,
     )
-
-
-async def clear_offline_notice_channel(guild_id):
-    """Disable graceful shutdown notices for a guild."""
-    await upsert_guild_settings(guild_id, offline_notice_channel_id=0)
 
 
 async def get_ticket_settings(guild_id) -> dict | None:

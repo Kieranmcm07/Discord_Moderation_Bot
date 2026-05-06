@@ -10,6 +10,7 @@ cogs/music.py - simple music playback with queue support.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import random
 from dataclasses import dataclass
@@ -34,6 +35,9 @@ FFMPEG_OPTIONS = {
     "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
     "options": "-vn",
 }
+
+IDLE_DISCONNECT_SECONDS = 180
+VOICE_CONNECT_TIMEOUT = 20.0
 
 MUSIC_FILTERS = {
     "off": {
@@ -288,6 +292,51 @@ class Music(commands.Cog, name="Music"):
         state.queue._queue.extend(queued)
         return len(queued)
 
+    async def get_healthy_voice(
+        self,
+        guild: discord.Guild,
+    ) -> discord.VoiceClient | None:
+        voice = guild.voice_client
+        if voice and not voice.is_connected():
+            log.info("Dropping stale voice client in guild %s.", guild.id)
+            with contextlib.suppress(
+                discord.ClientException,
+                discord.HTTPException,
+                RuntimeError,
+                asyncio.TimeoutError,
+            ):
+                await voice.disconnect(force=True)
+            return None
+        return voice
+
+    async def disconnect_if_idle(
+        self,
+        guild: discord.Guild,
+        state: GuildMusicState,
+    ):
+        voice = guild.voice_client
+        if not voice:
+            return
+
+        if voice.is_playing() or voice.is_paused() or not state.queue.empty():
+            return
+
+        state.now_playing = None
+        state.skip_requested = False
+        state.restart_requested = False
+        log.info(
+            "Disconnecting idle music voice client in guild %s after %s seconds.",
+            guild.id,
+            IDLE_DISCONNECT_SECONDS,
+        )
+        with contextlib.suppress(
+            discord.ClientException,
+            discord.HTTPException,
+            RuntimeError,
+            asyncio.TimeoutError,
+        ):
+            await voice.disconnect()
+
     async def restart_current_track(
         self,
         ctx: commands.Context,
@@ -355,17 +404,25 @@ class Music(commands.Cog, name="Music"):
             return None
 
         channel = ctx.author.voice.channel
-        voice = ctx.guild.voice_client
+        voice = await self.get_healthy_voice(ctx.guild)
 
         if voice and voice.channel != channel:
             await voice.move_to(channel)
+            await self.start_player(ctx.guild)
             return voice
 
         if voice:
+            await self.start_player(ctx.guild)
             return voice
 
         try:
-            return await channel.connect()
+            voice = await channel.connect(
+                timeout=VOICE_CONNECT_TIMEOUT,
+                reconnect=True,
+                self_deaf=True,
+            )
+            await self.start_player(ctx.guild)
+            return voice
         except RuntimeError as exc:
             message = str(exc)
             if "davey" in message.lower():
@@ -428,55 +485,67 @@ class Music(commands.Cog, name="Music"):
     async def player_loop(self, guild: discord.Guild):
         state = self.get_state(guild.id)
 
-        while True:
-            track = await state.queue.get()
+        try:
             while True:
-                voice = guild.voice_client
-
-                if voice is None:
-                    state.now_playing = None
-                    state.skip_requested = False
-                    break
-
-                state.now_playing = track
-                state.skip_requested = False
-                finished = asyncio.Event()
-
-                def after_playback(error: Exception | None):
-                    if error:
-                        log.warning(
-                            "Music playback error in guild %s: %s",
-                            guild.id,
-                            error,
-                        )
-                    self.bot.loop.call_soon_threadsafe(finished.set)
-
                 try:
-                    source = self.make_source(track, state)
-                    voice.play(source, after=after_playback)
-                except Exception:
-                    log.exception(
-                        "Failed to start music playback in guild %s for %s",
-                        guild.id,
-                        track.webpage_url,
+                    track = await asyncio.wait_for(
+                        state.queue.get(),
+                        timeout=IDLE_DISCONNECT_SECONDS,
                     )
+                except asyncio.TimeoutError:
+                    await self.disconnect_if_idle(guild, state)
+                    return
+
+                while True:
+                    voice = await self.get_healthy_voice(guild)
+
+                    if voice is None:
+                        state.now_playing = None
+                        state.skip_requested = False
+                        break
+
+                    state.now_playing = track
+                    state.skip_requested = False
+                    finished = asyncio.Event()
+
+                    def after_playback(error: Exception | None):
+                        if error:
+                            log.warning(
+                                "Music playback error in guild %s: %s",
+                                guild.id,
+                                error,
+                            )
+                        self.bot.loop.call_soon_threadsafe(finished.set)
+
+                    try:
+                        source = self.make_source(track, state)
+                        voice.play(source, after=after_playback)
+                    except Exception:
+                        log.exception(
+                            "Failed to start music playback in guild %s for %s",
+                            guild.id,
+                            track.webpage_url,
+                        )
+                        state.now_playing = None
+                        state.restart_requested = False
+                        state.skip_requested = False
+                        break
+
+                    await finished.wait()
+
+                    if state.restart_requested:
+                        state.restart_requested = False
+                        continue
+
+                    if state.loop_enabled and not state.skip_requested:
+                        continue
+
                     state.now_playing = None
-                    state.restart_requested = False
                     state.skip_requested = False
                     break
-
-                await finished.wait()
-
-                if state.restart_requested:
-                    state.restart_requested = False
-                    continue
-
-                if state.loop_enabled and not state.skip_requested:
-                    continue
-
-                state.now_playing = None
-                state.skip_requested = False
-                break
+        finally:
+            if state.player_task is asyncio.current_task():
+                state.player_task = None
 
     @commands.command(name="join", help="Join the voice channel you are currently in.")
     async def join(self, ctx):

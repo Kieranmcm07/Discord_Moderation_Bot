@@ -127,9 +127,6 @@ OWNER_IDS=
 MOD_LOG_CHANNEL_ID=0
 INVITE_LOG_CHANNEL_ID=0
 JOIN_LOG_CHANNEL_ID=0
-OFFLINE_NOTICE_CHANNEL_ID=0
-OFFLINE_NOTICE_MESSAGE=I am going offline because the computer running me is shutting down. Commands will be unavailable until the bot starts again.
-OFFLINE_PRESENCE_MESSAGE=Going offline
 DB_PATH=data/bot.db
 ```
 
@@ -174,9 +171,6 @@ Environment values are loaded from `.env`.
 | `MOD_LOG_CHANNEL_ID` | Optional fallback moderation log channel |
 | `INVITE_LOG_CHANNEL_ID` | Optional invite log channel |
 | `JOIN_LOG_CHANNEL_ID` | Optional join and leave log channel |
-| `OFFLINE_NOTICE_CHANNEL_ID` | Optional fallback channel for graceful shutdown notices |
-| `OFFLINE_NOTICE_MESSAGE` | Message sent before graceful shutdown; supports `{server}` and `{prefix}` |
-| `OFFLINE_PRESENCE_MESSAGE` | Temporary presence text used while shutting down |
 
 Most server-specific setup can be managed inside Discord:
 
@@ -184,7 +178,6 @@ Most server-specific setup can be managed inside Discord:
 ,settings
 ,setmodlog #channel
 ,setmessagelog #channel
-,setofflinechannel #channel
 ,setwelcomechannel #channel
 ,setwelcomemessage <message>
 ,setleavechannel #channel
@@ -334,9 +327,6 @@ The default prefix in this README is `,`. Change it with `PREFIX` in `.env`.
 | `,setmessagelog #channel` | Set deleted and edited message audit logs |
 | `,viewmessagelog` | Show the message audit log channel |
 | `,clearmessagelog` | Disable message audit logs |
-| `,setofflinechannel #channel` | Set graceful shutdown notices |
-| `,viewofflinechannel` | Show the graceful shutdown notice channel |
-| `,clearofflinechannel` | Disable graceful shutdown notices |
 
 ### Community Tools
 
@@ -412,9 +402,8 @@ The default prefix in this README is `,`. Change it with `PREFIX` in `.env`.
 - Voice activity tracking only records time while the bot is running.
 - Guilds can set a custom embed color and an optional shared image or GIF for
   branded embeds.
-- If `stop_bot.bat` or a normal graceful exit is used, the bot can post an
-  offline notice before disconnecting. Once it is fully offline, Discord cannot
-  deliver commands to it, so it cannot reply until it starts again.
+- Once the bot is fully offline, Discord cannot deliver commands to it, so it
+  cannot reply until it starts again.
 
 ## Project Structure
 

@@ -53,7 +53,7 @@ if not defined BOT_PIDS (
 set "STOPPED_PIDS=%BOT_PIDS%"
 set "STOP_FILE=%TEMP%\discord_mod_bot_stop.json"
 
-echo Requesting graceful shutdown so the bot can notify Discord...
+echo Requesting graceful shutdown...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$rawIds = '!BOT_PIDS!'.Trim() -split '\s+';" ^
   "$ids = foreach ($rawId in $rawIds) { if ($rawId) { [int]$rawId } };" ^
@@ -65,7 +65,7 @@ if errorlevel 1 (
     goto FORCE_STOP
 )
 
-echo Waiting for the bot to send its offline notice...
+echo Waiting for the bot to shut down...
 for /L %%S in (1,1,25) do (
     set "STILL_RUNNING="
     for %%P in (%BOT_PIDS%) do (

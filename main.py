@@ -28,13 +28,10 @@ from discord.ext import commands
 
 from config import (
     BOT_TOKEN,
-    OFFLINE_NOTICE_MESSAGE,
-    OFFLINE_PRESENCE_MESSAGE,
     OWNER_IDS,
     PREFIX,
-    resolve_offline_notice_channel_id,
 )
-from utils.db import get_custom_command, get_guild_settings, init_db
+from utils.db import get_custom_command, init_db
 from utils.embeds import decorate_embed, make_embed
 
 TOKEN_PLACEHOLDERS = {"YOUR_TOKEN_HERE", "YOUR_BOT_TOKEN_HERE"}
@@ -258,15 +255,6 @@ def render_custom_response(template: str, ctx: commands.Context) -> str:
     )
 
 
-def render_offline_notice(template: str, guild: discord.Guild) -> str:
-    """Apply simple placeholders to the graceful shutdown notice."""
-    return (
-        (template or OFFLINE_NOTICE_MESSAGE)
-        .replace("{server}", guild.name)
-        .replace("{prefix}", PREFIX)
-    )
-
-
 configure_logging()
 log = logging.getLogger("bot")
 atexit.register(release_lock)
@@ -309,7 +297,6 @@ class MyBot(commands.Bot):
             case_insensitive=True,
         )
         self.started_at = discord.utils.utcnow()
-        self._shutdown_notice_sent = False
         self._stop_watcher_task: asyncio.Task | None = None
 
     async def bot_check(self, ctx: commands.Context) -> bool:
@@ -412,8 +399,7 @@ class MyBot(commands.Bot):
             log.exception("Stop request watcher failed")
 
     async def close(self):
-        """Send a best-effort shutdown notice before disconnecting."""
-        await self.send_shutdown_notice()
+        """Shut down background helpers before disconnecting."""
 
         current_task = asyncio.current_task()
         if self._stop_watcher_task and self._stop_watcher_task is not current_task:
@@ -422,77 +408,6 @@ class MyBot(commands.Bot):
                 await self._stop_watcher_task
 
         await super().close()
-
-    async def send_shutdown_notice(self):
-        """Post the configured offline notice and briefly update public presence."""
-        if self._shutdown_notice_sent or not self.is_ready():
-            return
-
-        self._shutdown_notice_sent = True
-        write_status("stopping", "Sending offline notice...")
-
-        try:
-            await self.change_presence(
-                status=discord.Status.idle,
-                activity=discord.Activity(
-                    type=discord.ActivityType.watching,
-                    name=OFFLINE_PRESENCE_MESSAGE or "Going offline",
-                ),
-            )
-        except discord.HTTPException:
-            log.warning("Could not update offline presence.", exc_info=True)
-
-        sent_channel_ids: set[int] = set()
-        sent_count = 0
-        for guild in list(self.guilds):
-            settings = await get_guild_settings(guild.id) or {}
-            channel_id = resolve_offline_notice_channel_id(settings)
-            if not channel_id or channel_id in sent_channel_ids:
-                continue
-
-            get_channel_or_thread = getattr(guild, "get_channel_or_thread", None)
-            if get_channel_or_thread:
-                channel = get_channel_or_thread(channel_id)
-            else:
-                channel = guild.get_channel(channel_id)
-
-            if channel is None:
-                channel = self.get_channel(channel_id)
-                if getattr(getattr(channel, "guild", None), "id", None) != guild.id:
-                    channel = None
-
-            if channel is None or not hasattr(channel, "send"):
-                log.warning(
-                    "Offline notice channel %s was not found in guild %s.",
-                    channel_id,
-                    guild.id,
-                )
-                continue
-
-            embed = await make_embed(
-                self,
-                guild=guild,
-                title="Bot Going Offline",
-                description=render_offline_notice(OFFLINE_NOTICE_MESSAGE, guild),
-                color=discord.Color.orange(),
-            )
-
-            try:
-                await channel.send(embed=embed)
-            except (discord.Forbidden, discord.HTTPException):
-                log.warning(
-                    "Could not send offline notice in channel %s.",
-                    channel_id,
-                    exc_info=True,
-                )
-                continue
-
-            sent_channel_ids.add(channel_id)
-            sent_count += 1
-
-        if sent_count:
-            log.info("Sent offline notice to %s channel(s).", sent_count)
-            await asyncio.sleep(1)
 
     async def on_ready(self):
         """Log a clean ready message and refresh the public presence text."""
