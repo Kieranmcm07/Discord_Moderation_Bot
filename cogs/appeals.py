@@ -33,6 +33,7 @@ from utils.db import (
     get_user_cases,
 )
 from utils.embeds import make_embed
+from utils.errors import SafeModal, SafeView
 from utils.time import unix_timestamp
 
 log = logging.getLogger(__name__)
@@ -63,7 +64,7 @@ class AppealCreateButton(discord.ui.Button):
         await interaction.response.send_modal(AppealModal(self.cog))
 
 
-class AppealModal(discord.ui.Modal, title="Open a Case Appeal"):
+class AppealModal(SafeModal, title="Open a Case Appeal"):
     case_id = discord.ui.TextInput(
         label="Case ID",
         placeholder="Example: 42",
@@ -102,7 +103,7 @@ class Appeals(commands.Cog, name="Appeals"):
         self.bot.add_view(self._build_panel_view())
 
     def _build_panel_view(self) -> discord.ui.View:
-        view = discord.ui.View(timeout=None)
+        view = SafeView(timeout=None)
         view.add_item(AppealCreateButton(self))
         return view
 

@@ -36,6 +36,7 @@ from utils.db import (
     remove_ticket_role,
     upsert_ticket_settings,
 )
+from utils.errors import SafeView
 
 log = logging.getLogger(__name__)
 
@@ -95,7 +96,7 @@ class Tickets(commands.Cog, name="Tickets"):
         await self._register_ticket_buttons()
 
     def _build_close_view(self) -> discord.ui.View:
-        view = discord.ui.View(timeout=None)
+        view = SafeView(timeout=None)
         view.add_item(TicketCloseButton(self))
         return view
 
@@ -107,7 +108,7 @@ class Tickets(commands.Cog, name="Tickets"):
                 if key in self._registered_create_buttons:
                     continue
 
-                view = discord.ui.View(timeout=None)
+                view = SafeView(timeout=None)
                 view.add_item(TicketCreateButton(self, category))
                 self.bot.add_view(view)
                 self._registered_create_buttons.add(key)
@@ -119,7 +120,7 @@ class Tickets(commands.Cog, name="Tickets"):
             if key in self._registered_create_buttons:
                 continue
 
-            view = discord.ui.View(timeout=None)
+            view = SafeView(timeout=None)
             view.add_item(TicketCreateButton(self, category))
             self.bot.add_view(view)
             self._registered_create_buttons.add(key)
@@ -148,7 +149,7 @@ class Tickets(commands.Cog, name="Tickets"):
         if not categories:
             return None
 
-        view = discord.ui.View(timeout=None)
+        view = SafeView(timeout=None)
         for category in categories[:5]:
             view.add_item(TicketCreateButton(self, category))
         return view

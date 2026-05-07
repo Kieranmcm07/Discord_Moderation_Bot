@@ -21,6 +21,7 @@ from discord.ext import commands
 import yt_dlp
 
 from config import COLOR_ERROR, COLOR_INFO, COLOR_SUCCESS
+from utils.errors import SafeView
 
 YTDL_FORMAT_OPTIONS = {
     "format": "bestaudio/best",
@@ -140,7 +141,7 @@ class GuildMusicState:
         self.volume = 1.0
 
 
-class MusicControlView(discord.ui.View):
+class MusicControlView(SafeView):
     def __init__(self, cog: "Music", guild_id: int):
         super().__init__(timeout=180)
         self.cog = cog

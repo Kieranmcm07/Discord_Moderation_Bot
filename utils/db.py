@@ -16,6 +16,13 @@ import aiosqlite
 
 from config import DB_PATH
 
+DB_TIMEOUT_SECONDS = 30.0
+
+
+def connect_db():
+    """Open SQLite with enough busy timeout for overlapping bot tasks."""
+    return aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT_SECONDS)
+
 
 async def ensure_column(
     db: aiosqlite.Connection, table_name: str, column_name: str, definition: str
@@ -45,7 +52,10 @@ async def init_db():
     if db_directory:
         os.makedirs(db_directory, exist_ok=True)
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute(f"PRAGMA busy_timeout={int(DB_TIMEOUT_SECONDS * 1000)}")
+
         await db.execute("""
             CREATE TABLE IF NOT EXISTS cases (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -379,7 +389,7 @@ async def add_case(
     guild_id, user_id, mod_id, action, reason=None, duration=None
 ) -> int:
     """Insert a new case and return its generated case ID."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         cursor = await db.execute(
             "INSERT INTO cases (guild_id, user_id, mod_id, action, reason, duration) VALUES (?,?,?,?,?,?)",
             (guild_id, user_id, mod_id, action, reason, duration),
@@ -390,7 +400,7 @@ async def add_case(
 
 async def get_case(guild_id, case_id) -> dict | None:
     """Fetch a single case by its ID."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM cases WHERE guild_id=? AND id=?",
@@ -402,7 +412,7 @@ async def get_case(guild_id, case_id) -> dict | None:
 
 async def get_user_cases(guild_id, user_id) -> list[dict]:
     """Return all logged cases for one member in reverse chronological order."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM cases WHERE guild_id=? AND user_id=? ORDER BY created_at DESC",
@@ -411,10 +421,9 @@ async def get_user_cases(guild_id, user_id) -> list[dict]:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
-
 async def get_recent_cases(guild_id, limit=10) -> list[dict]:
     """Return the most recent moderation cases for a guild."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM cases WHERE guild_id=? ORDER BY created_at DESC LIMIT ?",
@@ -426,7 +435,7 @@ async def get_recent_cases(guild_id, limit=10) -> list[dict]:
 
 async def update_case_reason(guild_id, case_id: int, reason: str) -> bool:
     """Update the reason on an existing case and report whether it changed."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         cursor = await db.execute(
             "UPDATE cases SET reason=? WHERE guild_id=? AND id=?",
             (reason, guild_id, case_id),
@@ -437,7 +446,7 @@ async def update_case_reason(guild_id, case_id: int, reason: str) -> bool:
 
 async def get_warn_count(guild_id, user_id) -> int:
     """Count the active warning cases for a user."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         async with db.execute(
             "SELECT COUNT(*) FROM cases WHERE guild_id=? AND user_id=? AND action='warn'",
             (guild_id, user_id),
@@ -448,7 +457,7 @@ async def get_warn_count(guild_id, user_id) -> int:
 
 async def get_recent_warns(guild_id, user_id, limit=5) -> list[dict]:
     """Return the newest warning cases for a specific user."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
@@ -465,7 +474,7 @@ async def get_recent_warns(guild_id, user_id, limit=5) -> list[dict]:
 
 async def clear_recent_warns(guild_id, user_id, amount: int) -> list[int]:
     """Delete the newest warning cases for a user and return the removed case IDs."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         async with db.execute(
             """
             SELECT id FROM cases
@@ -494,7 +503,7 @@ async def upsert_escalation_rule(
     guild_id, warn_count: int, action: str, duration: str | None = None
 ):
     """Create or update an escalation rule for a warning threshold."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             """
             INSERT INTO escalation_rules (guild_id, warn_count, action, duration)
@@ -510,7 +519,7 @@ async def upsert_escalation_rule(
 
 async def remove_escalation_rule(guild_id, warn_count: int):
     """Remove an escalation rule for a warning threshold."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             "DELETE FROM escalation_rules WHERE guild_id=? AND warn_count=?",
             (guild_id, warn_count),
@@ -520,7 +529,7 @@ async def remove_escalation_rule(guild_id, warn_count: int):
 
 async def get_escalation_rules(guild_id) -> list[dict]:
     """Return all escalation rules for a guild in threshold order."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM escalation_rules WHERE guild_id=? ORDER BY warn_count ASC",
@@ -532,7 +541,7 @@ async def get_escalation_rules(guild_id) -> list[dict]:
 
 async def get_matching_escalation_rule(guild_id, warn_count: int) -> dict | None:
     """Return the escalation rule that exactly matches a warning count."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM escalation_rules WHERE guild_id=? AND warn_count=?",
@@ -546,7 +555,7 @@ async def add_temp_ban(
     guild_id, user_id, mod_id, expires_at: str, reason: str | None = None
 ):
     """Store or refresh a temporary ban entry."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             """
             INSERT INTO temp_bans (guild_id, user_id, mod_id, reason, expires_at)
@@ -563,7 +572,7 @@ async def add_temp_ban(
 
 async def remove_temp_ban(guild_id, user_id):
     """Remove a temporary ban tracking entry."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             "DELETE FROM temp_bans WHERE guild_id=? AND user_id=?",
             (guild_id, user_id),
@@ -573,7 +582,7 @@ async def remove_temp_ban(guild_id, user_id):
 
 async def get_expired_temp_bans(now_iso: str) -> list[dict]:
     """Return temporary bans that should now be lifted."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM temp_bans WHERE expires_at<=? ORDER BY expires_at ASC",
@@ -585,7 +594,7 @@ async def get_expired_temp_bans(now_iso: str) -> list[dict]:
 
 async def get_temp_bans_for_guild(guild_id) -> list[dict]:
     """List active temporary bans for one guild."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM temp_bans WHERE guild_id=? ORDER BY expires_at ASC",
@@ -597,7 +606,7 @@ async def get_temp_bans_for_guild(guild_id) -> list[dict]:
 
 async def get_active_temp_ban(guild_id, user_id) -> dict | None:
     """Return the active temporary ban entry for one user, if present."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM temp_bans WHERE guild_id=? AND user_id=?",
@@ -609,7 +618,7 @@ async def get_active_temp_ban(guild_id, user_id) -> dict | None:
 
 async def upsert_invite(guild_id, code, inviter_id, uses):
     """Store the latest usage count for an invite code."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             """
             INSERT INTO invites (guild_id, code, inviter_id, uses)
@@ -625,7 +634,7 @@ async def upsert_invite(guild_id, code, inviter_id, uses):
 
 async def get_invites(guild_id) -> list[dict]:
     """Return all stored invite snapshots for one guild."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM invites WHERE guild_id=?", (guild_id,)
@@ -636,7 +645,7 @@ async def get_invites(guild_id) -> list[dict]:
 
 async def increment_message_stat(guild_id, user_id, day: str):
     """Increase one member's chat count for a specific date."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             """
             INSERT INTO message_stats (guild_id, user_id, day, count) VALUES (?,?,?,1)
@@ -649,7 +658,7 @@ async def increment_message_stat(guild_id, user_id, day: str):
 
 async def get_top_chatters(guild_id, limit=10) -> list[dict]:
     """Return the top chatters across all recorded days."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
@@ -668,7 +677,7 @@ async def get_top_chatters(guild_id, limit=10) -> list[dict]:
 
 async def add_voice_time(guild_id, user_id, minutes: int):
     """Accumulate recorded voice minutes for a member."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             """
             INSERT INTO voice_stats (guild_id, user_id, minutes) VALUES (?,?,?)
@@ -681,7 +690,7 @@ async def add_voice_time(guild_id, user_id, minutes: int):
 
 async def get_top_voice(guild_id, limit=10) -> list[dict]:
     """Return the most active voice users for a guild."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT user_id, minutes FROM voice_stats WHERE guild_id=? ORDER BY minutes DESC LIMIT ?",
@@ -693,7 +702,7 @@ async def get_top_voice(guild_id, limit=10) -> list[dict]:
 
 async def log_member_event(guild_id, user_id, event: str):
     """Store a simple join or leave event."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             "INSERT INTO member_log (guild_id, user_id, event) VALUES (?,?,?)",
             (guild_id, user_id, event),
@@ -703,7 +712,7 @@ async def log_member_event(guild_id, user_id, event: str):
 
 async def set_autorole(guild_id, role_id):
     """Save the role that new members should receive automatically."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             """
             INSERT INTO autorole_settings (guild_id, role_id)
@@ -717,14 +726,14 @@ async def set_autorole(guild_id, role_id):
 
 async def clear_autorole(guild_id):
     """Disable automatic role assignment for new members."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute("DELETE FROM autorole_settings WHERE guild_id=?", (guild_id,))
         await db.commit()
 
 
 async def get_autorole(guild_id) -> int | None:
     """Return the saved autorole ID, if one exists."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         async with db.execute(
             "SELECT role_id FROM autorole_settings WHERE guild_id=?",
             (guild_id,),
@@ -735,7 +744,7 @@ async def get_autorole(guild_id) -> int | None:
 
 async def set_sticky_message(guild_id, channel_id, content: str, created_by_id: int):
     """Create or replace a sticky message definition for a channel."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         current_message_id = await get_sticky_message_id(channel_id)
         await db.execute(
             """
@@ -755,7 +764,7 @@ async def set_sticky_message(guild_id, channel_id, content: str, created_by_id: 
 
 async def clear_sticky_message(channel_id):
     """Remove a sticky message definition from a channel."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             "DELETE FROM sticky_messages WHERE channel_id=?", (channel_id,)
         )
@@ -764,7 +773,7 @@ async def clear_sticky_message(channel_id):
 
 async def get_sticky_message(channel_id) -> dict | None:
     """Return the sticky message settings for one channel."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM sticky_messages WHERE channel_id=?",
@@ -776,7 +785,7 @@ async def get_sticky_message(channel_id) -> dict | None:
 
 async def get_all_sticky_messages(guild_id) -> list[dict]:
     """Return all sticky message definitions for a guild."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM sticky_messages WHERE guild_id=? ORDER BY channel_id ASC",
@@ -788,7 +797,7 @@ async def get_all_sticky_messages(guild_id) -> list[dict]:
 
 async def get_sticky_message_id(channel_id) -> int | None:
     """Return the last sticky message ID posted by the bot in a channel."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         async with db.execute(
             "SELECT bot_message_id FROM sticky_messages WHERE channel_id=?",
             (channel_id,),
@@ -799,7 +808,7 @@ async def get_sticky_message_id(channel_id) -> int | None:
 
 async def update_sticky_message_id(channel_id, message_id: int | None):
     """Update the bot message ID linked to a sticky definition."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             "UPDATE sticky_messages SET bot_message_id=? WHERE channel_id=?",
             (message_id, channel_id),
@@ -809,7 +818,7 @@ async def update_sticky_message_id(channel_id, message_id: int | None):
 
 async def get_guild_settings(guild_id) -> dict | None:
     """Return the stored server-wide appearance and message settings."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM guild_settings WHERE guild_id=?",
@@ -872,7 +881,7 @@ async def upsert_guild_settings(
         ),
     }
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             """
             INSERT INTO guild_settings (
@@ -955,7 +964,7 @@ async def clear_message_log_channel(guild_id):
 
 async def get_ticket_settings(guild_id) -> dict | None:
     """Return the saved ticket settings for a guild."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM ticket_settings WHERE guild_id=?",
@@ -986,7 +995,7 @@ async def upsert_ticket_settings(
         ),
     }
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             """
             INSERT INTO ticket_settings (guild_id, category_id, log_channel_id, panel_channel_id)
@@ -1008,7 +1017,7 @@ async def upsert_ticket_settings(
 
 async def add_ticket_role(guild_id, role_id):
     """Allow a role to access ticket channels by default."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             "INSERT OR IGNORE INTO ticket_roles (guild_id, role_id) VALUES (?,?)",
             (guild_id, role_id),
@@ -1018,7 +1027,7 @@ async def add_ticket_role(guild_id, role_id):
 
 async def remove_ticket_role(guild_id, role_id):
     """Remove a role from default ticket access."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             "DELETE FROM ticket_roles WHERE guild_id=? AND role_id=?",
             (guild_id, role_id),
@@ -1028,7 +1037,7 @@ async def remove_ticket_role(guild_id, role_id):
 
 async def get_ticket_roles(guild_id) -> list[int]:
     """Return all role IDs that have default ticket access."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         async with db.execute(
             "SELECT role_id FROM ticket_roles WHERE guild_id=? ORDER BY role_id",
             (guild_id,),
@@ -1041,7 +1050,7 @@ async def add_ticket_category(
     guild_id, name: str, emoji: str | None = None, description: str | None = None
 ):
     """Create a selectable ticket category entry."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         cursor = await db.execute(
             "INSERT INTO ticket_categories (guild_id, name, emoji, description) VALUES (?,?,?,?)",
             (guild_id, name, emoji, description),
@@ -1052,7 +1061,7 @@ async def add_ticket_category(
 
 async def remove_ticket_category(guild_id, category_id: int):
     """Delete a ticket category entry."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             "DELETE FROM ticket_categories WHERE guild_id=? AND id=?",
             (guild_id, category_id),
@@ -1062,7 +1071,7 @@ async def remove_ticket_category(guild_id, category_id: int):
 
 async def get_ticket_categories(guild_id) -> list[dict]:
     """Return all ticket category entries for a guild."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM ticket_categories WHERE guild_id=? ORDER BY id ASC",
@@ -1074,7 +1083,7 @@ async def get_ticket_categories(guild_id) -> list[dict]:
 
 async def create_ticket(guild_id, channel_id, user_id, category_name: str) -> int:
     """Insert a new ticket record and return its ticket ID."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         cursor = await db.execute(
             "INSERT INTO tickets (guild_id, channel_id, user_id, category_name) VALUES (?,?,?,?)",
             (guild_id, channel_id, user_id, category_name),
@@ -1085,7 +1094,7 @@ async def create_ticket(guild_id, channel_id, user_id, category_name: str) -> in
 
 async def get_ticket_by_channel(channel_id) -> dict | None:
     """Return the ticket record linked to a channel."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM tickets WHERE channel_id=?",
@@ -1097,7 +1106,7 @@ async def get_ticket_by_channel(channel_id) -> dict | None:
 
 async def get_open_ticket_for_user(guild_id, user_id) -> dict | None:
     """Return the newest open ticket for a member, if they have one."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
@@ -1114,7 +1123,7 @@ async def get_open_ticket_for_user(guild_id, user_id) -> dict | None:
 
 async def close_ticket(channel_id, closed_by_id):
     """Mark an open ticket as closed."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             """
             UPDATE tickets
@@ -1128,7 +1137,7 @@ async def close_ticket(channel_id, closed_by_id):
 
 async def get_open_tickets(guild_id) -> list[dict]:
     """Return all open tickets for a guild."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM tickets WHERE guild_id=? AND status='open' ORDER BY id ASC",
@@ -1140,7 +1149,7 @@ async def get_open_tickets(guild_id) -> list[dict]:
 
 async def add_reaction_role(guild_id, role_id, label: str, emoji: str | None = None):
     """Store or update one self-assignable role option."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             """
             INSERT INTO reaction_roles (guild_id, role_id, label, emoji)
@@ -1156,7 +1165,7 @@ async def add_reaction_role(guild_id, role_id, label: str, emoji: str | None = N
 
 async def remove_reaction_role(guild_id, role_id):
     """Delete a self-assignable role option."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             "DELETE FROM reaction_roles WHERE guild_id=? AND role_id=?",
             (guild_id, role_id),
@@ -1166,7 +1175,7 @@ async def remove_reaction_role(guild_id, role_id):
 
 async def get_reaction_roles(guild_id) -> list[dict]:
     """Return all configured self-assignable role options for a guild."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM reaction_roles WHERE guild_id=? ORDER BY label COLLATE NOCASE ASC",
@@ -1178,7 +1187,7 @@ async def get_reaction_roles(guild_id) -> list[dict]:
 
 async def get_sentinel_settings(guild_id) -> dict:
     """Return Sentinel settings, using sensible defaults before configuration."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM sentinel_settings WHERE guild_id=?",
@@ -1227,7 +1236,7 @@ async def upsert_sentinel_settings(
         ),
     }
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             """
             INSERT INTO sentinel_settings (
@@ -1258,7 +1267,7 @@ async def add_sentinel_incident(
     reasons: str,
 ) -> int:
     """Store a Sentinel incident and return its generated ID."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         cursor = await db.execute(
             """
             INSERT INTO sentinel_incidents (guild_id, user_id, channel_id, score, reasons)
@@ -1272,7 +1281,7 @@ async def add_sentinel_incident(
 
 async def get_recent_sentinel_incidents(guild_id, limit=10) -> list[dict]:
     """Return the newest Sentinel incidents for a guild."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
@@ -1289,7 +1298,7 @@ async def get_recent_sentinel_incidents(guild_id, limit=10) -> list[dict]:
 
 async def add_reminder(guild_id, channel_id, user_id, message: str, due_at: str) -> int:
     """Store a reminder and return its generated ID."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         cursor = await db.execute(
             """
             INSERT INTO reminders (guild_id, channel_id, user_id, message, due_at)
@@ -1303,7 +1312,7 @@ async def add_reminder(guild_id, channel_id, user_id, message: str, due_at: str)
 
 async def get_due_reminders(now_iso: str, limit: int = 25) -> list[dict]:
     """Return reminders that are ready to be delivered."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
@@ -1320,7 +1329,7 @@ async def get_due_reminders(now_iso: str, limit: int = 25) -> list[dict]:
 
 async def get_user_reminders(guild_id, user_id, limit: int = 10) -> list[dict]:
     """Return active reminders created by one user in a guild."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
@@ -1345,7 +1354,7 @@ async def delete_reminder(
         query += " AND user_id=?"
         params.append(user_id)
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         cursor = await db.execute(query, params)
         await db.commit()
         return cursor.rowcount > 0
@@ -1355,7 +1364,7 @@ async def upsert_custom_command(
     guild_id, name: str, response: str, created_by_id: int
 ) -> None:
     """Create or update a guild custom command."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             """
             INSERT INTO custom_commands (guild_id, name, response, created_by_id)
@@ -1371,7 +1380,7 @@ async def upsert_custom_command(
 
 async def get_custom_command(guild_id, name: str) -> dict | None:
     """Return one custom command by name."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
@@ -1386,7 +1395,7 @@ async def get_custom_command(guild_id, name: str) -> dict | None:
 
 async def get_custom_commands(guild_id) -> list[dict]:
     """Return all custom commands for one guild."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
@@ -1402,7 +1411,7 @@ async def get_custom_commands(guild_id) -> list[dict]:
 
 async def delete_custom_command(guild_id, name: str) -> bool:
     """Delete one guild custom command."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         cursor = await db.execute(
             "DELETE FROM custom_commands WHERE guild_id=? AND name=?",
             (guild_id, name),
@@ -1413,7 +1422,7 @@ async def delete_custom_command(guild_id, name: str) -> bool:
 
 async def set_afk_status(guild_id, user_id, reason: str) -> None:
     """Create or refresh one member's AFK status."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             """
             INSERT INTO afk_statuses (guild_id, user_id, reason)
@@ -1429,7 +1438,7 @@ async def set_afk_status(guild_id, user_id, reason: str) -> None:
 
 async def get_afk_status(guild_id, user_id) -> dict | None:
     """Return a member's AFK status, if they have one."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
@@ -1448,7 +1457,7 @@ async def clear_afk_status(guild_id, user_id) -> dict | None:
     if not status:
         return None
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             "DELETE FROM afk_statuses WHERE guild_id=? AND user_id=?",
             (guild_id, user_id),
@@ -1460,7 +1469,7 @@ async def clear_afk_status(guild_id, user_id) -> dict | None:
 
 async def get_case_action_counts(guild_id, days: int = 7) -> list[dict]:
     """Return moderation action counts for a recent time window."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
@@ -1478,7 +1487,7 @@ async def get_case_action_counts(guild_id, days: int = 7) -> list[dict]:
 
 async def get_member_event_counts(guild_id, days: int = 7) -> dict:
     """Return join and leave counts for a recent time window."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         async with db.execute(
             """
             SELECT event, COUNT(*) AS total
@@ -1495,7 +1504,7 @@ async def get_member_event_counts(guild_id, days: int = 7) -> dict:
 
 async def get_ticket_summary(guild_id) -> dict:
     """Return ticket totals grouped by status."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         async with db.execute(
             """
             SELECT status, COUNT(*) AS total
@@ -1522,7 +1531,7 @@ async def get_message_total(guild_id, days: int | None = None) -> int:
         query += " AND date(day) >= date('now', ?)"
         params.append(f"-{days} days")
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         async with db.execute(query, params) as cursor:
             row = await cursor.fetchone()
             return int(row[0] or 0)
@@ -1530,7 +1539,7 @@ async def get_message_total(guild_id, days: int | None = None) -> int:
 
 async def get_user_message_total(guild_id, user_id) -> int:
     """Return all recorded messages for one member."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         async with db.execute(
             """
             SELECT COALESCE(SUM(count), 0)
@@ -1545,7 +1554,7 @@ async def get_user_message_total(guild_id, user_id) -> int:
 
 async def get_user_voice_minutes(guild_id, user_id) -> int:
     """Return all recorded voice minutes for one member."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         async with db.execute(
             "SELECT minutes FROM voice_stats WHERE guild_id=? AND user_id=?",
             (guild_id, user_id),
@@ -1556,7 +1565,7 @@ async def get_user_voice_minutes(guild_id, user_id) -> int:
 
 async def get_sentinel_incident_count(guild_id, days: int = 7) -> int:
     """Return the number of Sentinel incidents in a recent time window."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         async with db.execute(
             """
             SELECT COUNT(*)
@@ -1571,7 +1580,7 @@ async def get_sentinel_incident_count(guild_id, days: int = 7) -> int:
 
 async def get_automod_settings(guild_id) -> dict:
     """Return AutoMod settings, using practical defaults before setup."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM automod_settings WHERE guild_id=?",
@@ -1625,7 +1634,7 @@ async def upsert_automod_settings(
         ),
     }
 
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         await db.execute(
             """
             INSERT INTO automod_settings (
@@ -1654,7 +1663,7 @@ async def upsert_automod_settings(
 async def add_automod_blocked_term(guild_id, term: str, created_by: int) -> bool:
     """Add a blocked AutoMod term and report whether it was new."""
     normalized = term.strip().lower()
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         cursor = await db.execute(
             """
             INSERT OR IGNORE INTO automod_blocked_terms (guild_id, term, created_by)
@@ -1669,7 +1678,7 @@ async def add_automod_blocked_term(guild_id, term: str, created_by: int) -> bool
 async def remove_automod_blocked_term(guild_id, term: str) -> bool:
     """Remove a blocked AutoMod term and report whether it existed."""
     normalized = term.strip().lower()
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         cursor = await db.execute(
             "DELETE FROM automod_blocked_terms WHERE guild_id=? AND term=?",
             (guild_id, normalized),
@@ -1680,7 +1689,7 @@ async def remove_automod_blocked_term(guild_id, term: str) -> bool:
 
 async def get_automod_blocked_terms(guild_id) -> list[dict]:
     """Return every blocked AutoMod term for a guild."""
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with connect_db() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """

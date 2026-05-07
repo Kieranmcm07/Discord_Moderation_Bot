@@ -50,6 +50,7 @@ from utils.db import (
     get_warn_count,
 )
 from utils.embeds import make_embed
+from utils.errors import SafeView
 from utils.time import unix_timestamp
 
 ACTION_LABELS = {
@@ -96,7 +97,7 @@ def truncate(value: str, limit: int = 120) -> str:
     return value if len(value) <= limit else f"{value[: limit - 3]}..."
 
 
-class CommandCenterView(discord.ui.View):
+class CommandCenterView(SafeView):
     """Small refreshable control strip for the command center dashboard."""
 
     def __init__(self, cog: "CommandCenter", author_id: int):

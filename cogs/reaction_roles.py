@@ -20,6 +20,7 @@ from discord.ext import commands
 from config import COLOR_ERROR, COLOR_INFO, COLOR_SUCCESS
 from utils.db import add_reaction_role, get_reaction_roles, remove_reaction_role
 from utils.embeds import make_embed
+from utils.errors import SafeView
 
 
 class ReactionRoleButton(discord.ui.Button):
@@ -70,7 +71,7 @@ class ReactionRoles(commands.Cog, name="Reaction Roles"):
             if not entries:
                 continue
 
-            view = discord.ui.View(timeout=None)
+            view = SafeView(timeout=None)
             for entry in entries[:25]:
                 view.add_item(
                     ReactionRoleButton(
@@ -278,7 +279,7 @@ class ReactionRoles(commands.Cog, name="Reaction Roles"):
             timestamp=datetime.utcnow(),
         )
 
-        view = discord.ui.View(timeout=None)
+        view = SafeView(timeout=None)
         for entry in entries[:25]:
             view.add_item(
                 ReactionRoleButton(

@@ -20,7 +20,9 @@ import difflib
 import json
 import logging
 import os
+import sys
 import tempfile
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import discord
@@ -32,7 +34,14 @@ from config import (
     PREFIX,
 )
 from utils.db import get_custom_command, init_db
-from utils.embeds import decorate_embed, make_embed
+from utils.embeds import decorate_embed
+from utils.errors import (
+    log_exception,
+    safe_context_send,
+    send_command_feedback,
+    send_unexpected_command_error,
+    send_unexpected_interaction_error,
+)
 
 TOKEN_PLACEHOLDERS = {"YOUR_TOKEN_HERE", "YOUR_BOT_TOKEN_HERE"}
 
@@ -116,7 +125,12 @@ def enable_ansi():
 
 def configure_logging():
     """Log to file every time, and to the console unless background mode is used."""
-    file_handler = logging.FileHandler("bot.log", encoding="utf-8")
+    file_handler = RotatingFileHandler(
+        "bot.log",
+        maxBytes=5 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8",
+    )
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
     )
@@ -298,6 +312,7 @@ class MyBot(commands.Bot):
         )
         self.started_at = discord.utils.utcnow()
         self._stop_watcher_task: asyncio.Task | None = None
+        self.tree.on_error = self.on_app_command_error
 
     async def bot_check(self, ctx: commands.Context) -> bool:
         """Keep server-only commands from crashing when used in DMs."""
@@ -429,6 +444,49 @@ class MyBot(commands.Bot):
             )
         )
 
+    async def on_error(self, event_method: str, *args, **kwargs):
+        """Log listener/background event crashes with searchable error IDs."""
+        _, error, _ = sys.exc_info()
+        if error is None:
+            log.error("Unhandled event error in %s, but no exception was available", event_method)
+            return
+
+        first_arg = args[0] if args else None
+        guild = getattr(first_arg, "guild", None)
+        channel = getattr(first_arg, "channel", None)
+        user = getattr(first_arg, "author", None) or getattr(first_arg, "user", None)
+
+        log_exception(
+            log,
+            f"Unhandled event error in {event_method}",
+            error,
+            event=event_method,
+            guild_id=getattr(guild, "id", None),
+            channel_id=getattr(channel, "id", None),
+            user_id=getattr(user, "id", None),
+            arg_count=len(args),
+            kwarg_keys=",".join(kwargs.keys()),
+        )
+
+    async def on_app_command_error(
+        self,
+        interaction: discord.Interaction,
+        error: discord.app_commands.AppCommandError,
+    ):
+        """Give slash/app command crashes the same error-ID treatment."""
+        error = getattr(error, "original", error)
+        command = getattr(interaction, "command", None)
+        error_id = log_exception(
+            log,
+            "Unhandled app command error",
+            error,
+            command=getattr(command, "qualified_name", None),
+            guild_id=getattr(interaction.guild, "id", None),
+            channel_id=getattr(interaction.channel, "id", None),
+            user_id=getattr(interaction.user, "id", None),
+        )
+        await send_unexpected_interaction_error(interaction, error_id)
+
     async def on_command_error(self, ctx: commands.Context, error):
         """Keep user-facing errors friendly while still logging real failures."""
         error = getattr(error, "original", error)
@@ -441,7 +499,10 @@ class MyBot(commands.Bot):
             if ctx.guild:
                 custom = await get_custom_command(ctx.guild.id, attempted.lower())
                 if custom:
-                    await ctx.send(render_custom_response(custom["response"], ctx))
+                    await safe_context_send(
+                        ctx,
+                        render_custom_response(custom["response"], ctx),
+                    )
                     return
 
             visible_commands = [
@@ -461,95 +522,81 @@ class MyBot(commands.Bot):
                 return
 
             suggestions = "\n".join(f"`{PREFIX}{name}`" for name in matches)
-            await ctx.send(
-                embed=await make_embed(
-                    self,
-                    guild=ctx.guild,
-                    title="Unknown Command",
-                    description=(
-                        f"I do not have `{PREFIX}{attempted}`.\n\n"
-                        f"Did you mean:\n{suggestions}"
-                    ),
-                    color=discord.Color.orange(),
-                )
+            await send_command_feedback(
+                ctx,
+                self,
+                title="Unknown Command",
+                description=(
+                    f"I do not have `{PREFIX}{attempted}`.\n\n"
+                    f"Did you mean:\n{suggestions}"
+                ),
+                color=discord.Color.orange(),
             )
             return
 
         if isinstance(error, commands.NoPrivateMessage):
-            await ctx.send(
-                embed=await make_embed(
-                    self,
-                    guild=None,
-                    title="Server Only",
-                    description=(
-                        "That command needs to be used inside a server where I can "
-                        "read roles, channels, and permissions."
-                    ),
-                    color=discord.Color.orange(),
-                )
+            await send_command_feedback(
+                ctx,
+                self,
+                title="Server Only",
+                description=(
+                    "That command needs to be used inside a server where I can "
+                    "read roles, channels, and permissions."
+                ),
+                color=discord.Color.orange(),
             )
             return
 
         if isinstance(error, commands.MissingPermissions):
-            await ctx.send(
-                embed=await make_embed(
-                    self,
-                    guild=ctx.guild,
-                    title="Permission Required",
-                    description="You do not have permission to use that command.",
-                    color=discord.Color.red(),
-                )
+            await send_command_feedback(
+                ctx,
+                self,
+                title="Permission Required",
+                description="You do not have permission to use that command.",
+                color=discord.Color.red(),
             )
             return
 
         if isinstance(error, commands.BotMissingPermissions):
-            await ctx.send(
-                embed=await make_embed(
-                    self,
-                    guild=ctx.guild,
-                    title="Missing Bot Permissions",
-                    description=f"I need these permissions first: `{', '.join(error.missing_permissions)}`",
-                    color=discord.Color.red(),
-                )
+            await send_command_feedback(
+                ctx,
+                self,
+                title="Missing Bot Permissions",
+                description=f"I need these permissions first: `{', '.join(error.missing_permissions)}`",
+                color=discord.Color.red(),
             )
             return
 
         if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send(
-                embed=await make_embed(
-                    self,
-                    guild=ctx.guild,
-                    title="Missing Argument",
-                    description=f"`{error.param.name}` is required. Try `{PREFIX}help {ctx.command}` for usage.",
-                    color=discord.Color.orange(),
-                )
+            await send_command_feedback(
+                ctx,
+                self,
+                title="Missing Argument",
+                description=f"`{error.param.name}` is required. Try `{PREFIX}help {ctx.command}` for usage.",
+                color=discord.Color.orange(),
             )
             return
 
         if isinstance(error, commands.BadUnionArgument):
-            await ctx.send(
-                embed=await make_embed(
-                    self,
-                    guild=ctx.guild,
-                    title="Bad Argument",
-                    description=(
-                        "I could not find that member or user. Try a mention, "
-                        "user ID, or exact username."
-                    ),
-                    color=discord.Color.orange(),
-                )
+            await send_command_feedback(
+                ctx,
+                self,
+                title="Bad Argument",
+                description=(
+                    "I could not find that member or user. Try a mention, "
+                    "user ID, or exact username."
+                ),
+                color=discord.Color.orange(),
             )
             return
 
         if isinstance(error, commands.BadArgument):
-            await ctx.send(
-                embed=await make_embed(
-                    self,
-                    guild=ctx.guild,
-                    title="Bad Argument",
-                    description="That input does not match what the command expects. Try a valid mention, role, channel, or number.",
-                    color=discord.Color.orange(),
-                )
+            await send_command_feedback(
+                ctx,
+                self,
+                title="Bad Argument",
+                description="That input does not match what the command expects. Try a valid mention, role, channel, or number.",
+                color=discord.Color.orange(),
             )
             return
 
@@ -559,35 +606,80 @@ class MyBot(commands.Bot):
                 if ctx.command
                 else ""
             )
-            await ctx.send(
-                embed=await make_embed(
-                    self,
-                    guild=ctx.guild,
-                    title="Bad Input",
-                    description=(
-                        "That input does not match what the command expects."
-                        f"{usage_hint}"
-                    ),
-                    color=discord.Color.orange(),
-                )
+            await send_command_feedback(
+                ctx,
+                self,
+                title="Bad Input",
+                description=(
+                    "That input does not match what the command expects."
+                    f"{usage_hint}"
+                ),
+                color=discord.Color.orange(),
             )
             return
 
-        log.error(
-            "Unhandled error in command %s: %s",
-            ctx.command,
-            error,
-            exc_info=(type(error), error, error.__traceback__),
-        )
-        await ctx.send(
-            embed=await make_embed(
+        if isinstance(error, commands.CommandOnCooldown):
+            retry_after = max(1, round(error.retry_after))
+            await send_command_feedback(
+                ctx,
                 self,
-                guild=ctx.guild,
-                title="Something Went Wrong",
-                description="That command hit an unexpected error. I logged the details in `bot.log` for debugging.",
+                title="Slow Down",
+                description=f"That command is on cooldown. Try again in `{retry_after}` second(s).",
+                color=discord.Color.orange(),
+            )
+            return
+
+        if isinstance(error, commands.DisabledCommand):
+            await send_command_feedback(
+                ctx,
+                self,
+                title="Command Disabled",
+                description="That command is currently disabled.",
+                color=discord.Color.orange(),
+            )
+            return
+
+        if isinstance(error, commands.NotOwner):
+            await send_command_feedback(
+                ctx,
+                self,
+                title="Owner Only",
+                description="Only the bot owner can use that command.",
                 color=discord.Color.red(),
             )
+            return
+
+        if isinstance(error, commands.MaxConcurrencyReached):
+            await send_command_feedback(
+                ctx,
+                self,
+                title="Already Running",
+                description="That command is already running. Wait for it to finish before starting another one.",
+                color=discord.Color.orange(),
+            )
+            return
+
+        if isinstance(error, commands.CheckFailure):
+            await send_command_feedback(
+                ctx,
+                self,
+                title="Cannot Use That Here",
+                description="That command cannot be used in this context.",
+                color=discord.Color.orange(),
+            )
+            return
+
+        error_id = log_exception(
+            log,
+            "Unhandled command error",
+            error,
+            command=getattr(ctx.command, "qualified_name", None),
+            guild_id=getattr(ctx.guild, "id", None),
+            channel_id=getattr(ctx.channel, "id", None),
+            author_id=getattr(ctx.author, "id", None),
+            message_id=getattr(ctx.message, "id", None),
         )
+        await send_unexpected_command_error(ctx, self, error_id)
 
 
 async def main():
