@@ -1,0 +1,2 @@
+# Keep Windows batch labels compatible with cmd.exe.
+*.bat text eol=crlf
