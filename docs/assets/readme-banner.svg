@@ -1,0 +1,93 @@
+<svg width="1280" height="420" viewBox="0 0 1280 420" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Discord Moderation Bot banner</title>
+  <desc id="desc">A dark dashboard-style banner for a Discord moderation bot with command panels, status cards, and safety signals.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="0.42" stop-color="#101d34"/>
+      <stop offset="1" stop-color="#052d38"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#17233b"/>
+      <stop offset="1" stop-color="#0d1728"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="150" y1="70" x2="1120" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#57c7ff"/>
+      <stop offset="0.5" stop-color="#7bd88f"/>
+      <stop offset="1" stop-color="#ffd166"/>
+    </linearGradient>
+    <pattern id="grid" width="42" height="42" patternUnits="userSpaceOnUse">
+      <path d="M 42 0 L 0 0 0 42" stroke="#ffffff" stroke-opacity="0.045" stroke-width="1"/>
+    </pattern>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="20" stdDeviation="18" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="420" rx="26" fill="url(#bg)"/>
+  <rect width="1280" height="420" rx="26" fill="url(#grid)"/>
+  <path d="M0 338 C176 292 264 388 431 326 C616 257 674 110 860 110 C1012 110 1087 206 1280 165 L1280 420 L0 420 Z" fill="#57c7ff" fill-opacity="0.055"/>
+  <path d="M65 330 C253 250 361 314 531 235 C704 155 787 56 997 87 C1097 102 1171 151 1235 124" stroke="url(#accent)" stroke-opacity="0.55" stroke-width="3"/>
+
+  <g filter="url(#softShadow)">
+    <rect x="62" y="58" width="595" height="260" rx="18" fill="#0d1628" fill-opacity="0.82" stroke="#2e4865"/>
+    <rect x="92" y="90" width="126" height="30" rx="15" fill="#5865f2" fill-opacity="0.18" stroke="#5865f2"/>
+    <text x="155" y="111" text-anchor="middle" fill="#dbe7ff" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="15" font-weight="700">discord.py</text>
+
+    <text x="92" y="168" fill="#ffffff" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="44" font-weight="800" letter-spacing="0">Discord Moderation Bot</text>
+    <text x="94" y="210" fill="#adc7dc" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="21" font-weight="500">A complete staff toolkit for safer, cleaner communities.</text>
+
+    <g font-family="Segoe UI, Inter, Arial, sans-serif" font-size="17" font-weight="700">
+      <rect x="94" y="245" width="108" height="34" rx="17" fill="#57c7ff" fill-opacity="0.14" stroke="#57c7ff" stroke-opacity="0.8"/>
+      <text x="148" y="268" text-anchor="middle" fill="#c7f0ff">AutoMod</text>
+      <rect x="216" y="245" width="103" height="34" rx="17" fill="#7bd88f" fill-opacity="0.14" stroke="#7bd88f" stroke-opacity="0.8"/>
+      <text x="267" y="268" text-anchor="middle" fill="#d4f7df">Tickets</text>
+      <rect x="333" y="245" width="91" height="34" rx="17" fill="#ffd166" fill-opacity="0.14" stroke="#ffd166" stroke-opacity="0.85"/>
+      <text x="379" y="268" text-anchor="middle" fill="#ffe4a3">Cases</text>
+      <rect x="438" y="245" width="112" height="34" rx="17" fill="#ff6b6b" fill-opacity="0.14" stroke="#ff6b6b" stroke-opacity="0.8"/>
+      <text x="494" y="268" text-anchor="middle" fill="#ffc2c2">Sentinel</text>
+    </g>
+  </g>
+
+  <g filter="url(#softShadow)">
+    <rect x="724" y="60" width="472" height="296" rx="22" fill="url(#panel)" stroke="#2c4564"/>
+    <rect x="752" y="88" width="416" height="48" rx="14" fill="#101c30" stroke="#304761"/>
+    <circle cx="780" cy="112" r="9" fill="#7bd88f" filter="url(#glow)"/>
+    <text x="805" y="118" fill="#dce8f6" font-family="Consolas, 'Courier New', monospace" font-size="18" font-weight="700">,missioncontrol</text>
+    <rect x="1076" y="101" width="76" height="24" rx="12" fill="#123827" stroke="#2f9f68" stroke-opacity="0.45"/>
+    <text x="1114" y="118" text-anchor="middle" fill="#7ff0a5" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="13" font-weight="800">ONLINE</text>
+
+    <g font-family="Segoe UI, Inter, Arial, sans-serif">
+      <rect x="752" y="162" width="126" height="74" rx="14" fill="#0f1a2d" stroke="#314a68"/>
+      <text x="772" y="190" fill="#8fb3cc" font-size="14" font-weight="700">Open Tickets</text>
+      <text x="772" y="220" fill="#ffffff" font-size="30" font-weight="800">12</text>
+
+      <rect x="899" y="162" width="126" height="74" rx="14" fill="#0f1a2d" stroke="#314a68"/>
+      <text x="919" y="190" fill="#8fb3cc" font-size="14" font-weight="700">Risk Score</text>
+      <text x="919" y="220" fill="#ffd166" font-size="30" font-weight="800">Low</text>
+
+      <rect x="1046" y="162" width="122" height="74" rx="14" fill="#0f1a2d" stroke="#314a68"/>
+      <text x="1066" y="190" fill="#8fb3cc" font-size="14" font-weight="700">Cases</text>
+      <text x="1066" y="220" fill="#ffffff" font-size="30" font-weight="800">248</text>
+
+      <rect x="752" y="258" width="416" height="58" rx="14" fill="#0f1a2d" stroke="#314a68"/>
+      <path d="M780 298 L842 284 L907 306 L976 276 L1048 294 L1138 280" stroke="#57c7ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="1138" cy="280" r="6" fill="#57c7ff" filter="url(#glow)"/>
+    </g>
+  </g>
+
+  <g opacity="0.55">
+    <path d="M686 384 H1187" stroke="#ffffff" stroke-opacity="0.12"/>
+    <path d="M93 350 H496" stroke="#ffffff" stroke-opacity="0.12"/>
+    <circle cx="1126" cy="77" r="4" fill="#57c7ff"/>
+    <circle cx="1150" cy="77" r="4" fill="#7bd88f"/>
+    <circle cx="1174" cy="77" r="4" fill="#ffd166"/>
+  </g>
+</svg>

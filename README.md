@@ -4,70 +4,151 @@
     GitHub: https://github.com/Kieranmcm07
   ============================================================
 -->
-# Discord Moderation Bot
 
-A practical `discord.py` moderation and server-management bot with SQLite
-storage, staff dashboards, tickets, activity tracking, AutoMod, and music tools.
+<p align="center">
+  <img src="docs/assets/readme-banner.svg" alt="Discord Moderation Bot banner" width="100%">
+</p>
 
-It is built for small and mid-sized Discord servers that want a capable staff
-toolkit without needing a separate web dashboard or external database service.
+<h1 align="center">Discord Moderation Bot</h1>
+
+<p align="center">
+  A practical <code>discord.py</code> moderation and server-management bot with SQLite storage,
+  staff dashboards, tickets, activity tracking, AutoMod, Sentinel, and music tools.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Kieranmcm07/Discord_Moderation_Bot/releases">
+    <img alt="Latest release" src="https://img.shields.io/github/v/release/Kieranmcm07/Discord_Moderation_Bot?style=for-the-badge&color=5865F2">
+  </a>
+  <a href="LICENSE">
+    <img alt="MIT license" src="https://img.shields.io/github/license/Kieranmcm07/Discord_Moderation_Bot?style=for-the-badge&color=2ea043">
+  </a>
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white">
+  <img alt="discord.py 2.3+" src="https://img.shields.io/badge/discord.py-2.3%2B-5865F2?style=for-the-badge&logo=discord&logoColor=white">
+  <img alt="SQLite storage" src="https://img.shields.io/badge/SQLite-local-044A64?style=for-the-badge&logo=sqlite&logoColor=white">
+</p>
+
+<p align="center">
+  <a href="#features">Features</a>
+  |
+  <a href="#screenshots">Screenshots</a>
+  |
+  <a href="#setup">Setup</a>
+  |
+  <a href="#command-overview">Commands</a>
+  |
+  <a href="#configuration">Configuration</a>
+</p>
+
+Built for small and mid-sized Discord servers that want a capable staff toolkit
+without needing a separate web dashboard or external database service.
+
+## At A Glance
+
+<table>
+  <tr>
+    <td width="25%" align="center">
+      <strong>Staff Ops</strong><br>
+      Mission Control, Bot Doctor, setup checks, and server health views.
+    </td>
+    <td width="25%" align="center">
+      <strong>Moderation</strong><br>
+      Cases, warnings, bans, timeouts, notes, chat logs, and CSV exports.
+    </td>
+    <td width="25%" align="center">
+      <strong>Automation</strong><br>
+      AutoMod, Sentinel risk signals, invite logging, autoroles, and sticky messages.
+    </td>
+    <td width="25%" align="center">
+      <strong>Community</strong><br>
+      Tickets, appeals, reminders, AFK, reaction roles, custom commands, and music.
+    </td>
+  </tr>
+</table>
 
 ## Features
 
-- Moderation commands for bans, tempbans, softbans, kicks, warnings, timeouts,
-  message cleanup, slowmode, and automatic warning escalations
-- Case tracking with user history, moderator summaries, CSV exports, case search,
-  editable reasons, and follow-up comments
-- Mission Control dashboard for server health, moderation load, tickets,
-  activity, Sentinel status, and recommended staff actions
-- Member 360 profiles that combine account age, moderation history, activity,
-  and live Sentinel risk signals
-- Bot Doctor setup checks for permissions, logs, tickets, Sentinel, branding,
-  and autorole configuration
-- Ticket panels with category buttons, private ticket channels, staff roles,
-  transcripts, logs, user add/remove controls, and rename support
-- Appeal panels for moderation case appeals with private appeal tickets and
-  staff decision logging
-- AutoMod for blocked terms, Discord invites, external links, mass mentions, and
-  optional warning cases
-- Sentinel threat radar for explainable raid, spam, link flood, mention storm,
-  suspicious join wave, and new-account detection
-- Activity tracking for chat and voice with leaderboards and per-user stats
-- Invite logging, welcome and leave messages, deleted and edited message audit
-  logs, sticky messages, autorole, polls, announcements, channel locks, nickname
-  tools, reaction-role buttons, reminders, AFK statuses, custom commands, and
-  music playback
+<table>
+  <tr>
+    <td width="50%">
+      <strong>Complete moderation workflow</strong><br>
+      Ban, tempban, softban, kick, warn, timeout, clean messages, slowmode, add private notes,
+      export chat logs, and configure automatic warning escalations.
+    </td>
+    <td width="50%">
+      <strong>Case history that staff can actually use</strong><br>
+      Search cases, edit reasons, add follow-up comments, view recent actions, build compact
+      moderator summaries, and export case files as CSV.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <strong>Mission Control dashboard</strong><br>
+      See server health, moderation load, open tickets, activity, Sentinel status, and suggested
+      staff actions from inside Discord.
+    </td>
+    <td width="50%">
+      <strong>Member 360 profiles</strong><br>
+      Combine account age, moderation history, chat activity, voice time, and live Sentinel risk
+      signals into one staff-friendly view.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <strong>Tickets and appeals</strong><br>
+      Build ticket panels with category buttons, private channels, staff roles, transcripts,
+      logs, user controls, renaming, and moderation appeal decisions.
+    </td>
+    <td width="50%">
+      <strong>AutoMod and Sentinel</strong><br>
+      Block terms, delete invites and links, detect mass mentions, spot spam, link floods,
+      suspicious join waves, and new-account risk.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <strong>Server management tools</strong><br>
+      Welcome and leave messages, invite logs, deleted and edited message audits, polls,
+      announcements, locks, nicknames, autoroles, and branded embeds.
+    </td>
+    <td width="50%">
+      <strong>Community extras</strong><br>
+      Activity leaderboards, reminders, AFK statuses, reaction-role buttons, custom commands,
+      fun commands, and music playback with queues and filters.
+    </td>
+  </tr>
+</table>
 
 ## Screenshots
 
-These screenshots are included in the repository under `docs/screenshots/`, so
-they render directly on the GitHub project page.
+These screenshots live in `docs/screenshots/`, so they render directly on the
+GitHub project page.
 
 <table>
   <tr>
     <td align="center" width="50%">
-      <strong>Mission Control</strong><br>
-      <img src="docs/screenshots/mission-control.png" alt="Mission Control dashboard" width="420">
+      <strong>Mission Control</strong><br><br>
+      <img src="docs/screenshots/mission-control.png" alt="Mission Control dashboard" width="100%">
     </td>
     <td align="center" width="50%">
-      <strong>Bot Doctor</strong><br>
-      <img src="docs/screenshots/bot-doctor.png" alt="Bot Doctor setup check" width="420">
+      <strong>Bot Doctor</strong><br><br>
+      <img src="docs/screenshots/bot-doctor.png" alt="Bot Doctor setup check" width="100%">
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
-      <strong>Ticket Panel</strong><br>
-      <img src="docs/screenshots/ticket-panel.png" alt="Ticket creation panel" width="420">
+      <strong>Ticket Panel</strong><br><br>
+      <img src="docs/screenshots/ticket-panel.png" alt="Ticket creation panel" width="100%">
     </td>
     <td align="center" width="50%">
-      <strong>Member 360</strong><br>
-      <img src="docs/screenshots/member-360.png" alt="Member 360 staff profile" width="420">
+      <strong>Member 360</strong><br><br>
+      <img src="docs/screenshots/member-360.png" alt="Member 360 staff profile" width="100%">
     </td>
   </tr>
   <tr>
     <td align="center" colspan="2">
-      <strong>Sentinel</strong><br>
-      <img src="docs/screenshots/sentinel.png" alt="Sentinel threat radar" width="420">
+      <strong>Sentinel Threat Radar</strong><br><br>
+      <img src="docs/screenshots/sentinel.png" alt="Sentinel threat radar" width="70%">
     </td>
   </tr>
 </table>
@@ -432,10 +513,15 @@ The default prefix in this README is `,`. Change it with `PREFIX` in `.env`.
 |   `-- utility.py
 |-- data/
 |-- docs/
+|   |-- assets/
+|   |   `-- readme-banner.svg
 |   `-- screenshots/
+|-- tests/
 |-- utils/
 |   |-- db.py
-|   `-- embeds.py
+|   |-- embeds.py
+|   |-- errors.py
+|   `-- time.py
 |-- .env.example
 |-- config.py
 |-- launcher.py
