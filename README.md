@@ -43,6 +43,9 @@
 Built for small and mid-sized Discord servers that want a capable staff toolkit
 without needing a separate web dashboard or external database service.
 
+> Tip: after inviting the bot, run `,doctor` in a server channel to check
+> permissions, logging channels, and setup gaps before staff start using it.
+
 ## At A Glance
 
 <table>
