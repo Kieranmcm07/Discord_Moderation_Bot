@@ -212,6 +212,8 @@ MOD_LOG_CHANNEL_ID=0
 INVITE_LOG_CHANNEL_ID=0
 JOIN_LOG_CHANNEL_ID=0
 DB_PATH=data/bot.db
+BOT_FAILURE_MODE=retry
+BOT_RETRY_DELAY_SECONDS=5
 ```
 
 Only `BOT_TOKEN` is required. The other values can be left as defaults or
@@ -242,6 +244,10 @@ The repository includes Windows batch files for common local workflows:
 | `install_startup.bat` | Add the bot to Windows startup |
 | `remove_startup.bat` | Remove the Windows startup entry |
 
+When failure handling is set to `retry`, unexpected top-level crashes are
+retried after 5 seconds by default. During launcher startup retries, press `C`
+to close instead.
+
 ## Configuration
 
 Environment values are loaded from `.env`.
@@ -252,6 +258,8 @@ Environment values are loaded from `.env`.
 | `PREFIX` | Text command prefix, default `,` |
 | `OWNER_IDS` | Comma-separated Discord user IDs treated as bot owners |
 | `DB_PATH` | SQLite database path, default `data/bot.db` |
+| `BOT_FAILURE_MODE` | `retry` to restart after unexpected failures, or `close` to exit |
+| `BOT_RETRY_DELAY_SECONDS` | Seconds to wait before retrying, default `5` |
 | `MOD_LOG_CHANNEL_ID` | Optional fallback moderation log channel |
 | `INVITE_LOG_CHANNEL_ID` | Optional invite log channel |
 | `JOIN_LOG_CHANNEL_ID` | Optional join and leave log channel |

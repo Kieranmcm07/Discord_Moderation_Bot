@@ -7,6 +7,7 @@
 # This is mostly quality-of-life for running my own bot from a double-click.
 import ctypes
 import json
+import math
 import os
 import re
 import subprocess
@@ -14,6 +15,14 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+
+if os.name == "nt":
+    import msvcrt
+else:
+    msvcrt = None
+
+RETRY_DELAY_SECONDS = 5
+STARTUP_TIMEOUT_SECONDS = 60
 
 BOOT_BANNER = r"""
     ____  _                       _   ____        _   
@@ -197,6 +206,63 @@ def print_new_log_lines(log_file: Path, offset: int) -> int:
         return handle.tell()
 
 
+def close_key_pressed() -> bool:
+    """Return whether the user asked the retry launcher to close."""
+    if msvcrt is None:
+        return False
+
+    pressed_close = False
+    while msvcrt.kbhit():
+        key = msvcrt.getwch()
+        if key.lower() in {"c", "q"} or key == "\x1b":
+            pressed_close = True
+
+    return pressed_close
+
+
+def seconds_until_retry(status: dict) -> int:
+    """Calculate the launcher countdown from the status file when available."""
+    try:
+        retry_delay = int(status.get("retry_delay") or RETRY_DELAY_SECONDS)
+    except (TypeError, ValueError):
+        retry_delay = RETRY_DELAY_SECONDS
+
+    retry_at = status.get("retry_at")
+
+    try:
+        return max(0, math.ceil(float(retry_at) - time.time()))
+    except (TypeError, ValueError):
+        return retry_delay
+
+
+def show_retry_status(message: str, seconds_left: int):
+    clear_screen()
+    print(paint(FAIL_BANNER, "91"))
+    print(paint(f"Startup failed: {message}", "91"))
+    print()
+    print(
+        paint(
+            f"Retrying in {seconds_left} second(s). Press C to close instead.",
+            "93",
+        )
+    )
+
+
+def stop_child_process(process: subprocess.Popen):
+    """Stop the background bot process when the user cancels retries."""
+    if process.poll() is not None:
+        return
+
+    try:
+        process.terminate()
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+    except OSError:
+        pass
+
+
 def main():
     enable_ansi()
     show_banner(
@@ -243,13 +309,31 @@ def main():
         stderr=subprocess.DEVNULL,
     )
 
-    deadline = time.time() + 60
+    deadline = time.time() + STARTUP_TIMEOUT_SECONDS
+    last_state = None
+    last_message = None
+    last_retry_second = None
+
     while time.time() < deadline:
         log_offset = print_new_log_lines(log_file, log_offset)
         status = read_status(status_file)
         if status:
             state = status.get("state")
             message = status.get("message", "")
+
+            if state != last_state or message != last_message:
+                last_state = state
+                last_message = message
+                last_retry_second = None
+
+                if state == "starting":
+                    show_banner(
+                        BOOT_BANNER,
+                        "36",
+                        f"{message}\nLogs will appear below.\n",
+                    )
+                    print(paint(CREDITS_BANNER, "95"))
+                    deadline = time.time() + STARTUP_TIMEOUT_SECONDS
 
             if state == "ready":
                 log_offset = print_new_log_lines(log_file, log_offset)
@@ -267,6 +351,21 @@ def main():
                 print(paint(f"Startup failed: {message}", "91"))
                 input("\nPress Enter to close this window...")
                 return 1
+
+            if state == "retrying":
+                deadline = time.time() + STARTUP_TIMEOUT_SECONDS
+                seconds_left = seconds_until_retry(status)
+                if seconds_left != last_retry_second:
+                    show_retry_status(message, seconds_left)
+                    last_retry_second = seconds_left
+
+                if close_key_pressed():
+                    stop_child_process(process)
+                    clear_screen()
+                    print(paint(FAIL_BANNER, "91"))
+                    print(paint("Startup retry cancelled. Bot closed.", "91"))
+                    time.sleep(1.5)
+                    return 1
 
         if process.poll() is not None:
             log_offset = print_new_log_lines(log_file, log_offset)

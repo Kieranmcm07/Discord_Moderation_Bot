@@ -22,6 +22,7 @@ import logging
 import os
 import sys
 import tempfile
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -44,6 +45,40 @@ from utils.errors import (
 )
 
 TOKEN_PLACEHOLDERS = {"YOUR_TOKEN_HERE", "YOUR_BOT_TOKEN_HERE"}
+FAILURE_MODES = {"retry", "close"}
+
+
+class StartupConfigurationError(RuntimeError):
+    """Raised when the bot cannot start until local configuration is fixed."""
+
+
+def parse_retry_delay(value: str) -> int:
+    """Parse a positive retry delay from CLI/env input."""
+    try:
+        delay = int(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("retry delay must be a whole number") from exc
+
+    if delay < 1:
+        raise argparse.ArgumentTypeError("retry delay must be at least 1 second")
+
+    return delay
+
+
+def default_failure_mode() -> str:
+    """Read the default failure mode without trusting misspelled env values."""
+    mode = os.getenv("BOT_FAILURE_MODE", "retry").strip().lower()
+    if mode in FAILURE_MODES:
+        return mode
+    return "retry"
+
+
+def default_retry_delay() -> int:
+    """Read the retry delay from env, falling back to the requested 5 seconds."""
+    try:
+        return parse_retry_delay(os.getenv("BOT_RETRY_DELAY_SECONDS", "5"))
+    except argparse.ArgumentTypeError:
+        return 5
 
 
 def parse_args():
@@ -57,6 +92,18 @@ def parse_args():
     parser.add_argument(
         "--status-file",
         help="Write launcher status updates to this file while booting.",
+    )
+    parser.add_argument(
+        "--failure-mode",
+        choices=sorted(FAILURE_MODES),
+        default=default_failure_mode(),
+        help="Choose whether unexpected bot failures should retry or close.",
+    )
+    parser.add_argument(
+        "--retry-delay",
+        type=parse_retry_delay,
+        default=default_retry_delay(),
+        help="Seconds to wait before retrying after an unexpected failure.",
     )
 
     if __name__ == "__main__":
@@ -150,14 +197,16 @@ def configure_logging():
     )
 
 
-def write_status(state: str, message: str):
+def write_status(state: str, message: str, **extra):
     """Write launcher-friendly boot state updates when a status file is supplied."""
     if not STATUS_FILE:
         return
 
     STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"state": state, "message": message}
+    payload.update(extra)
     STATUS_FILE.write_text(
-        json.dumps({"state": state, "message": message}, ensure_ascii=True),
+        json.dumps(payload, ensure_ascii=True),
         encoding="utf-8",
     )
 
@@ -682,10 +731,17 @@ class MyBot(commands.Bot):
         await send_unexpected_command_error(ctx, self, error_id)
 
 
-async def main():
+NON_RETRYABLE_STARTUP_ERRORS = (
+    StartupConfigurationError,
+    discord.LoginFailure,
+    discord.PrivilegedIntentsRequired,
+)
+
+
+async def run_bot_once():
     """Create the bot instance and connect to Discord."""
     if not BOT_TOKEN or BOT_TOKEN in TOKEN_PLACEHOLDERS:
-        raise RuntimeError(
+        raise StartupConfigurationError(
             "BOT_TOKEN is missing. Add your real bot token to the .env file before starting the bot."
         )
 
@@ -695,9 +751,48 @@ async def main():
         await bot.start(BOT_TOKEN)
 
 
+async def main():
+    """Run the bot, optionally retrying unexpected top-level failures."""
+    attempt = 1
+    while True:
+        attempt_message = (
+            f"Booting bot... (attempt {attempt})"
+            if ARGS.failure_mode == "retry"
+            else "Booting bot..."
+        )
+        write_status("starting", attempt_message)
+        if attempt > 1:
+            log.info("Retrying bot startup (attempt %s)", attempt)
+
+        try:
+            await run_bot_once()
+            return
+        except asyncio.CancelledError:
+            raise
+        except NON_RETRYABLE_STARTUP_ERRORS:
+            raise
+        except Exception as exc:
+            if ARGS.failure_mode != "retry":
+                raise
+
+            retry_at = time.time() + ARGS.retry_delay
+            log.exception(
+                "Bot failed; retrying in %s second(s)",
+                ARGS.retry_delay,
+            )
+            write_status(
+                "retrying",
+                f"{exc}. Retrying in {ARGS.retry_delay} second(s)...",
+                retry_delay=ARGS.retry_delay,
+                retry_at=retry_at,
+                attempt=attempt,
+            )
+            await asyncio.sleep(ARGS.retry_delay)
+            attempt += 1
+
+
 if __name__ == "__main__":
     try:
-        write_status("starting", "Booting bot...")
         acquire_lock()
         asyncio.run(main())
     except Exception as exc:
