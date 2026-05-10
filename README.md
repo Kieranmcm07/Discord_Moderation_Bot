@@ -12,8 +12,11 @@
 <h1 align="center">Discord Moderation Bot</h1>
 
 <p align="center">
-  A practical <code>discord.py</code> moderation and server-management bot with SQLite storage,
-  staff dashboards, tickets, activity tracking, AutoMod, Sentinel, and music tools.
+  A polished <code>discord.py</code> staff toolkit for keeping Discord communities cleaner,
+  calmer, and easier to run.
+  <br>
+  Moderation, tickets, activity tracking, AutoMod, Sentinel, setup checks, and music tools
+  all live inside Discord.
 </p>
 
 <p align="center">
@@ -29,6 +32,8 @@
 </p>
 
 <p align="center">
+  <a href="#staff-workflow">Workflow</a>
+  |
   <a href="#features">Features</a>
   |
   <a href="#screenshots">Screenshots</a>
@@ -40,30 +45,59 @@
   <a href="#configuration">Configuration</a>
 </p>
 
-Built for small and mid-sized Discord servers that want a capable staff toolkit
-without needing a separate web dashboard or external database service.
+<p align="center">
+  <img src="docs/assets/readme-moderation-loop.gif" alt="Animated preview of the bot's staff dashboard, Sentinel radar, and moderation activity feed" width="92%">
+</p>
+
+<p align="center">
+  <strong>Built for busy staff teams:</strong>
+  diagnose setup issues, handle incidents, open tickets, review cases, watch risk signals,
+  and keep community extras in one bot without a separate web dashboard.
+</p>
 
 > Tip: after inviting the bot, run `,doctor` in a server channel to check
 > permissions, logging channels, and setup gaps before staff start using it.
+
+## Staff Workflow
+
+<table>
+  <tr>
+    <td width="33%" align="center">
+      <strong>1. Check The Setup</strong><br>
+      Run <code>,doctor</code> to catch missing permissions, channel gaps, and setup issues
+      before staff need the bot under pressure.
+    </td>
+    <td width="33%" align="center">
+      <strong>2. Work From Mission Control</strong><br>
+      Use <code>,missioncontrol</code> for server health, open tickets, moderation load,
+      activity signals, and suggested next actions.
+    </td>
+    <td width="33%" align="center">
+      <strong>3. Respond With Context</strong><br>
+      Pull <code>,member360</code>, case history, Sentinel signals, chat logs, and tickets
+      into the same staff workflow.
+    </td>
+  </tr>
+</table>
 
 ## At A Glance
 
 <table>
   <tr>
     <td width="25%" align="center">
-      <strong>Staff Ops</strong><br>
-      Mission Control, Bot Doctor, setup checks, and server health views.
+      <strong>Command Center</strong><br>
+      Mission Control, Bot Doctor, setup checks, server health, and staff prompts.
     </td>
     <td width="25%" align="center">
-      <strong>Moderation</strong><br>
-      Cases, warnings, bans, timeouts, notes, chat logs, and CSV exports.
+      <strong>Case Engine</strong><br>
+      Warnings, bans, timeouts, notes, chat logs, escalation rules, and CSV exports.
     </td>
     <td width="25%" align="center">
-      <strong>Automation</strong><br>
+      <strong>Safety Automation</strong><br>
       AutoMod, Sentinel risk signals, invite logging, autoroles, and sticky messages.
     </td>
     <td width="25%" align="center">
-      <strong>Community</strong><br>
+      <strong>Community Layer</strong><br>
       Tickets, appeals, reminders, AFK, reaction roles, custom commands, and music.
     </td>
   </tr>
@@ -525,7 +559,8 @@ The default prefix in this README is `,`. Change it with `PREFIX` in `.env`.
 |-- data/
 |-- docs/
 |   |-- assets/
-|   |   `-- readme-banner.svg
+|   |   |-- readme-banner.svg
+|   |   `-- readme-moderation-loop.gif
 |   `-- screenshots/
 |-- tests/
 |-- utils/
