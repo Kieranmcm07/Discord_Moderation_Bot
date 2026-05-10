@@ -421,6 +421,7 @@ async def get_user_cases(guild_id, user_id) -> list[dict]:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
+
 async def get_recent_cases(guild_id, limit=10) -> list[dict]:
     """Return the most recent moderation cases for a guild."""
     async with connect_db() as db:

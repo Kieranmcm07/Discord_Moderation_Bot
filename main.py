@@ -497,7 +497,10 @@ class MyBot(commands.Bot):
         """Log listener/background event crashes with searchable error IDs."""
         _, error, _ = sys.exc_info()
         if error is None:
-            log.error("Unhandled event error in %s, but no exception was available", event_method)
+            log.error(
+                "Unhandled event error in %s, but no exception was available",
+                event_method,
+            )
             return
 
         first_arg = args[0] if args else None
