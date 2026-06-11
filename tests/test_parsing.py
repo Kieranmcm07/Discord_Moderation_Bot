@@ -150,12 +150,18 @@ class SpotifyParsingTests(unittest.TestCase):
                 "external_urls": {
                     "spotify": "https://open.spotify.com/track/example"
                 },
+                "album": {
+                    "images": [
+                        {"url": "https://example.com/cover.png"},
+                    ],
+                },
             }
         )
 
         self.assertIsNotNone(track)
         self.assertEqual(track.display_title, "Test Artist - Test Song")
         self.assertEqual(track.duration, 123)
+        self.assertEqual(track.thumbnail_url, "https://example.com/cover.png")
         self.assertIn("official audio", track.search_query)
 
 
