@@ -295,6 +295,7 @@ class GuildMusicState:
     def __init__(self):
         self.queue: asyncio.Queue[Track] = asyncio.Queue()
         self.now_playing: Track | None = None
+        self.last_track: Track | None = None
         self.player_task: asyncio.Task | None = None
         self.announce_channel_id: int | None = None
         self.player_message: discord.Message | None = None
@@ -743,39 +744,84 @@ class Music(commands.Cog, name="Music"):
         state: GuildMusicState,
     ) -> discord.Embed:
         track = state.now_playing
+        display_track = track or state.last_track
         loop_text = "On" if state.loop_enabled else "Off"
         voice = guild.voice_client
         if voice and voice.is_paused():
             status_text = "Paused"
+            status_icon = "⏸️"
+            color = COLOR_INFO
         elif voice and voice.is_playing():
             status_text = "Playing"
+            status_icon = "▶️"
+            color = COLOR_SUCCESS
         else:
             status_text = "Idle"
+            status_icon = "⏹️"
+            color = COLOR_INFO
 
         if track:
             embed = discord.Embed(
                 title="Now Playing",
                 description=(
-                    f"### [{track.title}]({track.webpage_url})\n"
-                    f"`{track.duration_text}` requested by <@{track.requester_id}>"
+                    f"**[{track.title}]({track.webpage_url})**\n"
+                    f"`{track.duration_text}` • requested by <@{track.requester_id}>"
                 ),
-                color=COLOR_INFO,
+                color=color,
             )
-            if track.thumbnail_url:
-                embed.set_thumbnail(url=track.thumbnail_url)
+        elif display_track:
+            embed = discord.Embed(
+                title="Music Controls",
+                description=(
+                    "Nothing is playing right now.\n"
+                    f"Last track: **[{display_track.title}]({display_track.webpage_url})**"
+                ),
+                color=color,
+            )
         else:
             embed = discord.Embed(
                 title="Music Controls",
                 description="Nothing is playing right now.",
-                color=COLOR_INFO,
+                color=color,
             )
 
-        embed.add_field(name="Status", value=status_text, inline=True)
-        embed.add_field(name="Queue", value=str(state.queue.qsize()), inline=True)
-        embed.add_field(name="Loop", value=loop_text, inline=True)
+        bot_user = self.bot.user
+        if bot_user:
+            embed.set_author(
+                name="Nokturnal Music",
+                icon_url=bot_user.display_avatar.url,
+            )
+
+        if display_track and display_track.thumbnail_url:
+            embed.set_thumbnail(url=display_track.thumbnail_url)
+
+        embed.add_field(
+            name="Playback",
+            value=f"{status_icon} {status_text}",
+            inline=True,
+        )
+        embed.add_field(
+            name="Queue",
+            value=f"🎵 {state.queue.qsize()} waiting",
+            inline=True,
+        )
+        embed.add_field(name="Loop", value=f"🔁 {loop_text}", inline=True)
+
+        queued = list(state.queue._queue)
+        if queued:
+            next_track = queued[0]
+            embed.add_field(
+                name="Next Up",
+                value=f"[{next_track.title}]({next_track.webpage_url})",
+                inline=False,
+            )
 
         if voice and voice.channel:
-            embed.add_field(name="Voice Channel", value=voice.channel.mention, inline=False)
+            embed.add_field(
+                name="Voice Channel",
+                value=f"🔊 {voice.channel.mention}",
+                inline=False,
+            )
 
         embed.set_footer(text="Use the buttons below to control playback")
         return embed
@@ -805,6 +851,9 @@ class Music(commands.Cog, name="Music"):
                 return
             except (discord.Forbidden, discord.NotFound, discord.HTTPException):
                 state.player_message = None
+
+        if state.now_playing is None:
+            return
 
         with contextlib.suppress(discord.Forbidden, discord.HTTPException):
             state.player_message = await channel.send(embed=embed, view=view)
@@ -943,6 +992,28 @@ class Music(commands.Cog, name="Music"):
             )
             await self.start_player(ctx.guild)
             return voice
+        except asyncio.TimeoutError:
+            stale_voice = ctx.guild.voice_client
+            if stale_voice:
+                with contextlib.suppress(
+                    discord.ClientException,
+                    discord.HTTPException,
+                    RuntimeError,
+                    asyncio.TimeoutError,
+                ):
+                    await stale_voice.disconnect(force=True)
+
+            await ctx.send(
+                embed=discord.Embed(
+                    description=(
+                        "I timed out while joining your voice channel. "
+                        "Try `,play` again in a few seconds, or switch voice "
+                        "channels and try once more."
+                    ),
+                    color=COLOR_ERROR,
+                )
+            )
+            return None
         except RuntimeError as exc:
             message = str(exc)
             if "davey" in message.lower():
@@ -1159,9 +1230,11 @@ class Music(commands.Cog, name="Music"):
                     if voice is None:
                         state.now_playing = None
                         state.skip_requested = False
+                        await self.announce_now_playing(guild, state)
                         break
 
                     state.now_playing = track
+                    state.last_track = track
                     state.skip_requested = False
                     finished = asyncio.Event()
 
@@ -1189,6 +1262,7 @@ class Music(commands.Cog, name="Music"):
                         state.now_playing = None
                         state.restart_requested = False
                         state.skip_requested = False
+                        await self.announce_now_playing(guild, state)
                         break
 
                     await finished.wait()
@@ -1202,6 +1276,7 @@ class Music(commands.Cog, name="Music"):
 
                     state.now_playing = None
                     state.skip_requested = False
+                    await self.announce_now_playing(guild, state)
                     break
         finally:
             if state.player_task is asyncio.current_task():
@@ -1377,6 +1452,7 @@ class Music(commands.Cog, name="Music"):
             )
 
         voice.pause()
+        await self.announce_now_playing(ctx.guild, self.get_state(ctx.guild.id))
         await ctx.send(
             embed=discord.Embed(
                 description="Paused the current track.",
@@ -1405,6 +1481,7 @@ class Music(commands.Cog, name="Music"):
             )
 
         voice.resume()
+        await self.announce_now_playing(ctx.guild, self.get_state(ctx.guild.id))
         await ctx.send(
             embed=discord.Embed(
                 description="Resumed playback.",
@@ -1434,6 +1511,7 @@ class Music(commands.Cog, name="Music"):
         state.restart_requested = False
         if voice.is_playing() or voice.is_paused():
             voice.stop()
+        await self.announce_now_playing(ctx.guild, state)
 
         await ctx.send(
             embed=discord.Embed(
@@ -1467,6 +1545,7 @@ class Music(commands.Cog, name="Music"):
         if voice.is_playing() or voice.is_paused():
             voice.stop()
         await voice.disconnect()
+        await self.announce_now_playing(ctx.guild, state)
 
         await ctx.send(
             embed=discord.Embed(
