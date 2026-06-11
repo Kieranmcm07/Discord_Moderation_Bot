@@ -358,7 +358,7 @@ class GuildMusicState:
 
 class MusicControlView(SafeView):
     def __init__(self, cog: "Music", guild_id: int):
-        super().__init__(timeout=180)
+        super().__init__(timeout=None)
         self.cog = cog
         self.guild_id = guild_id
 
@@ -1055,10 +1055,24 @@ class Music(commands.Cog, name="Music"):
         embed.set_footer(text="Use the buttons below to control playback")
         return embed
 
+    async def deactivate_player_message(self, state: GuildMusicState):
+        if not state.player_message:
+            return
+
+        with contextlib.suppress(
+            discord.Forbidden,
+            discord.NotFound,
+            discord.HTTPException,
+        ):
+            await state.player_message.edit(view=None)
+        state.player_message = None
+
     async def announce_now_playing(
         self,
         guild: discord.Guild,
         state: GuildMusicState,
+        *,
+        fresh: bool = False,
     ):
         if state.announce_channel_id is None:
             return
@@ -1073,6 +1087,9 @@ class Music(commands.Cog, name="Music"):
 
         embed = self.build_player_embed(guild, state)
         view = MusicControlView(self, guild.id)
+
+        if fresh:
+            await self.deactivate_player_message(state)
 
         if state.player_message:
             try:
@@ -1333,7 +1350,7 @@ class Music(commands.Cog, name="Music"):
     ):
         state = self.get_state(ctx.guild.id)
         if state.announce_channel_id != ctx.channel.id:
-            state.player_message = None
+            await self.deactivate_player_message(state)
         state.announce_channel_id = ctx.channel.id
         was_busy = (
             voice.is_playing()
@@ -1452,7 +1469,6 @@ class Music(commands.Cog, name="Music"):
                     await self.disconnect_if_idle(guild, state)
                     return
 
-                announced = False
                 while True:
                     voice = await self.get_healthy_voice(guild)
 
@@ -1479,9 +1495,11 @@ class Music(commands.Cog, name="Music"):
                     try:
                         source = self.make_source(track, state)
                         voice.play(source, after=after_playback)
-                        if not announced:
-                            await self.announce_now_playing(guild, state)
-                            announced = True
+                        await self.announce_now_playing(
+                            guild,
+                            state,
+                            fresh=True,
+                        )
                     except Exception:
                         log.exception(
                             "Failed to start music playback in guild %s for %s",
@@ -1505,7 +1523,8 @@ class Music(commands.Cog, name="Music"):
 
                     state.now_playing = None
                     state.skip_requested = False
-                    await self.announce_now_playing(guild, state)
+                    if state.queue.empty():
+                        await self.announce_now_playing(guild, state)
                     break
         finally:
             if state.player_task is asyncio.current_task():
@@ -1575,7 +1594,7 @@ class Music(commands.Cog, name="Music"):
 
         state = self.get_state(ctx.guild.id)
         if state.announce_channel_id != ctx.channel.id:
-            state.player_message = None
+            await self.deactivate_player_message(state)
         state.announce_channel_id = ctx.channel.id
         was_busy = (
             voice.is_playing()
@@ -1795,7 +1814,9 @@ class Music(commands.Cog, name="Music"):
                 )
             )
 
-        await ctx.send(
+        state.announce_channel_id = ctx.channel.id
+        await self.deactivate_player_message(state)
+        state.player_message = await ctx.send(
             embed=self.build_player_embed(ctx.guild, state),
             view=MusicControlView(self, ctx.guild.id),
         )
@@ -2058,7 +2079,9 @@ class Music(commands.Cog, name="Music"):
     async def controls(self, ctx):
         """Usage: ,controls"""
         state = self.get_state(ctx.guild.id)
-        await ctx.send(
+        state.announce_channel_id = ctx.channel.id
+        await self.deactivate_player_message(state)
+        state.player_message = await ctx.send(
             embed=self.build_player_embed(ctx.guild, state),
             view=MusicControlView(self, ctx.guild.id),
         )
