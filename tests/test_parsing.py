@@ -10,6 +10,7 @@ import discord
 
 from cogs.invite_logger import invite_uses
 from cogs.moderation import build_chatlog_text, parse_duration
+from cogs.music import parse_spotify_reference, spotify_track_from_payload
 from cogs.reminders import parse_duration_prefix
 from utils.embeds import decorate_embed
 from utils.time import parse_db_timestamp, unix_timestamp
@@ -102,6 +103,60 @@ class HelperRegressionTests(unittest.IsolatedAsyncioTestCase):
     def test_invite_uses_treats_missing_count_as_zero(self):
         self.assertEqual(invite_uses(SimpleNamespace(uses=None)), 0)
         self.assertEqual(invite_uses(SimpleNamespace(uses=3)), 3)
+
+
+class SpotifyParsingTests(unittest.TestCase):
+    def test_parse_spotify_track_url(self):
+        reference = parse_spotify_reference(
+            "https://open.spotify.com/track/11dFghVXANMlKmJXsNCbNl?si=test"
+        )
+
+        self.assertIsNotNone(reference)
+        self.assertEqual(reference.kind, "track")
+        self.assertEqual(reference.item_id, "11dFghVXANMlKmJXsNCbNl")
+
+    def test_parse_spotify_uri(self):
+        reference = parse_spotify_reference(
+            "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"
+        )
+
+        self.assertIsNotNone(reference)
+        self.assertEqual(reference.kind, "playlist")
+        self.assertEqual(reference.item_id, "37i9dQZF1DXcBWIGoYBM5M")
+
+    def test_parse_spotify_international_url(self):
+        reference = parse_spotify_reference(
+            "https://open.spotify.com/intl-gb/album/6JWc4iAiJ9FjyK0B59ABb4"
+        )
+
+        self.assertIsNotNone(reference)
+        self.assertEqual(reference.kind, "album")
+        self.assertEqual(reference.item_id, "6JWc4iAiJ9FjyK0B59ABb4")
+
+    def test_reject_non_spotify_host(self):
+        self.assertIsNone(
+            parse_spotify_reference(
+                "https://notspotify.com/track/11dFghVXANMlKmJXsNCbNl"
+            )
+        )
+
+    def test_spotify_track_payload_becomes_searchable_metadata(self):
+        track = spotify_track_from_payload(
+            {
+                "type": "track",
+                "name": "Test Song",
+                "artists": [{"name": "Test Artist"}],
+                "duration_ms": 123456,
+                "external_urls": {
+                    "spotify": "https://open.spotify.com/track/example"
+                },
+            }
+        )
+
+        self.assertIsNotNone(track)
+        self.assertEqual(track.display_title, "Test Artist - Test Song")
+        self.assertEqual(track.duration, 123)
+        self.assertIn("official audio", track.search_query)
 
 
 if __name__ == "__main__":

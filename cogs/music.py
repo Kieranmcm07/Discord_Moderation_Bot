@@ -10,17 +10,29 @@ cogs/music.py - simple music playback with queue support.
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import logging
 import random
+import time
 from dataclasses import dataclass
 from functools import partial
+from typing import Any
+from urllib.parse import urlparse
 
+import aiohttp
 import discord
 from discord.ext import commands
 import yt_dlp
 
-from config import COLOR_ERROR, COLOR_INFO, COLOR_SUCCESS
+from config import (
+    COLOR_ERROR,
+    COLOR_INFO,
+    COLOR_SUCCESS,
+    SPOTIFY_CLIENT_ID,
+    SPOTIFY_CLIENT_SECRET,
+    SPOTIFY_MAX_TRACKS,
+)
 from utils.errors import SafeView
 
 YTDL_FORMAT_OPTIONS = {
@@ -39,6 +51,10 @@ FFMPEG_OPTIONS = {
 
 IDLE_DISCONNECT_SECONDS = 180
 VOICE_CONNECT_TIMEOUT = 20.0
+SPOTIFY_API_BASE_URL = "https://api.spotify.com/v1"
+SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
+SPOTIFY_SUPPORTED_TYPES = {"track", "album", "playlist"}
+SPOTIFY_TRACK_LIMIT = max(1, min(SPOTIFY_MAX_TRACKS, 100))
 
 MUSIC_FILTERS = {
     "off": {
@@ -127,6 +143,128 @@ class Track:
         if hours:
             return f"{hours}:{minutes:02}:{seconds:02}"
         return f"{minutes}:{seconds:02}"
+
+
+@dataclass(frozen=True)
+class SpotifyReference:
+    kind: str
+    item_id: str
+    url: str
+
+
+@dataclass(frozen=True)
+class SpotifyTrackMetadata:
+    title: str
+    artists: tuple[str, ...]
+    spotify_url: str
+    duration: int | None = None
+
+    @property
+    def display_title(self) -> str:
+        artist_text = ", ".join(self.artists)
+        if artist_text:
+            return f"{artist_text} - {self.title}"
+        return self.title
+
+    @property
+    def search_query(self) -> str:
+        artist_text = " ".join(self.artists)
+        return f"{artist_text} {self.title} official audio".strip()
+
+
+@dataclass(frozen=True)
+class SpotifySelection:
+    reference: SpotifyReference
+    title: str
+    tracks: list[SpotifyTrackMetadata]
+    total: int
+    limited: bool
+    skipped_unplayable: int = 0
+
+
+def parse_spotify_reference(query: str) -> SpotifyReference | None:
+    """Return the first Spotify track/album/playlist reference in a command."""
+    for token in query.split():
+        reference = parse_spotify_candidate(token)
+        if reference:
+            return reference
+    return None
+
+
+def parse_spotify_candidate(value: str) -> SpotifyReference | None:
+    candidate = value.strip().strip("<>()[]{}.,")
+    if not candidate:
+        return None
+
+    if candidate.startswith("spotify:"):
+        parts = candidate.split(":")
+        if len(parts) >= 3 and parts[1] in SPOTIFY_SUPPORTED_TYPES:
+            item_id = parts[2].split("?")[0]
+            if item_id:
+                kind = parts[1]
+                return SpotifyReference(
+                    kind=kind,
+                    item_id=item_id,
+                    url=f"https://open.spotify.com/{kind}/{item_id}",
+                )
+        return None
+
+    parsed = urlparse(candidate)
+    host = parsed.netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    if host != "spotify.com" and not host.endswith(".spotify.com"):
+        return None
+
+    segments = [segment for segment in parsed.path.split("/") if segment]
+    for index, segment in enumerate(segments):
+        if segment in SPOTIFY_SUPPORTED_TYPES and index + 1 < len(segments):
+            item_id = segments[index + 1]
+            if item_id:
+                return SpotifyReference(
+                    kind=segment,
+                    item_id=item_id,
+                    url=f"https://open.spotify.com/{segment}/{item_id}",
+                )
+
+    return None
+
+
+def spotify_track_from_payload(
+    payload: dict[str, Any] | None,
+) -> SpotifyTrackMetadata | None:
+    if not payload or payload.get("is_local"):
+        return None
+    if payload.get("type") not in {None, "track"}:
+        return None
+
+    title = payload.get("name")
+    artists = tuple(
+        artist.get("name", "").strip()
+        for artist in payload.get("artists", [])
+        if artist.get("name", "").strip()
+    )
+    if not title:
+        return None
+
+    duration_ms = payload.get("duration_ms")
+    duration = duration_ms // 1000 if isinstance(duration_ms, int) else None
+    spotify_url = (
+        payload.get("external_urls", {}).get("spotify")
+        or payload.get("href")
+        or ""
+    )
+
+    return SpotifyTrackMetadata(
+        title=title,
+        artists=artists,
+        spotify_url=spotify_url,
+        duration=duration,
+    )
+
+
+def spotify_total(value: Any, fallback: int) -> int:
+    return value if isinstance(value, int) else fallback
 
 
 class GuildMusicState:
@@ -254,6 +392,9 @@ class Music(commands.Cog, name="Music"):
     def __init__(self, bot):
         self.bot = bot
         self.states: dict[int, GuildMusicState] = {}
+        self.http_session: aiohttp.ClientSession | None = None
+        self.spotify_token: str | None = None
+        self.spotify_token_expires_at = 0.0
 
     def get_state(self, guild_id: int) -> GuildMusicState:
         state = self.states.get(guild_id)
@@ -261,6 +402,234 @@ class Music(commands.Cog, name="Music"):
             state = GuildMusicState()
             self.states[guild_id] = state
         return state
+
+    async def get_http_session(self) -> aiohttp.ClientSession:
+        if self.http_session is None or self.http_session.closed:
+            self.http_session = aiohttp.ClientSession()
+        return self.http_session
+
+    async def get_spotify_token(self) -> str:
+        if (
+            self.spotify_token
+            and time.monotonic() < self.spotify_token_expires_at - 60
+        ):
+            return self.spotify_token
+
+        if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
+            raise commands.CommandError(
+                "Spotify links need `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in `.env`."
+            )
+
+        session = await self.get_http_session()
+        credentials = f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode("utf-8")
+        auth_header = base64.b64encode(credentials).decode("ascii")
+
+        try:
+            async with session.post(
+                SPOTIFY_TOKEN_URL,
+                data={"grant_type": "client_credentials"},
+                headers={
+                    "Authorization": f"Basic {auth_header}",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+            ) as response:
+                if response.status != 200:
+                    text = await response.text()
+                    log.warning(
+                        "Spotify token request failed with HTTP %s: %s",
+                        response.status,
+                        text[:500],
+                    )
+                    raise commands.CommandError(
+                        "Spotify rejected the configured client ID/secret. Check your `.env` values."
+                    )
+
+                payload = await response.json()
+        except aiohttp.ClientError as exc:
+            raise commands.CommandError(f"Could not reach Spotify: {exc}") from exc
+
+        access_token = payload.get("access_token")
+        if not access_token:
+            raise commands.CommandError("Spotify did not return an access token.")
+
+        expires_in = payload.get("expires_in", 3600)
+        if not isinstance(expires_in, int):
+            expires_in = 3600
+
+        self.spotify_token = access_token
+        self.spotify_token_expires_at = time.monotonic() + expires_in
+        return access_token
+
+    async def spotify_api_get(
+        self,
+        path: str,
+        params: dict[str, str | int] | None = None,
+        *,
+        retry_on_auth_error: bool = True,
+    ) -> dict[str, Any]:
+        token = await self.get_spotify_token()
+        session = await self.get_http_session()
+        url = path if path.startswith("http") else f"{SPOTIFY_API_BASE_URL}{path}"
+
+        try:
+            async with session.get(
+                url,
+                params=params,
+                headers={"Authorization": f"Bearer {token}"},
+            ) as response:
+                if response.status == 401 and retry_on_auth_error:
+                    self.spotify_token = None
+                    self.spotify_token_expires_at = 0.0
+                    return await self.spotify_api_get(
+                        path,
+                        params,
+                        retry_on_auth_error=False,
+                    )
+
+                if response.status == 429:
+                    retry_after = response.headers.get("Retry-After")
+                    wait_text = (
+                        f" in {retry_after} second(s)"
+                        if retry_after
+                        else " in a moment"
+                    )
+                    raise commands.CommandError(
+                        f"Spotify is rate-limiting requests. Try again{wait_text}."
+                    )
+
+                if response.status == 404:
+                    raise commands.CommandError(
+                        "I couldn't find that Spotify item. Private or unavailable links may not work."
+                    )
+
+                if response.status >= 400:
+                    text = await response.text()
+                    log.warning(
+                        "Spotify API request failed with HTTP %s for %s: %s",
+                        response.status,
+                        url,
+                        text[:500],
+                    )
+                    raise commands.CommandError(
+                        "Spotify could not load that link right now."
+                    )
+
+                return await response.json()
+        except aiohttp.ClientError as exc:
+            raise commands.CommandError(f"Could not reach Spotify: {exc}") from exc
+
+    async def collect_spotify_items(
+        self,
+        first_page: dict[str, Any],
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        page = first_page
+
+        while page and len(items) < limit:
+            for item in page.get("items", []):
+                if len(items) >= limit:
+                    break
+                if isinstance(item, dict):
+                    items.append(item)
+
+            next_url = page.get("next")
+            if not next_url or len(items) >= limit:
+                break
+            page = await self.spotify_api_get(next_url)
+
+        return items
+
+    async def resolve_spotify_reference(
+        self,
+        reference: SpotifyReference,
+    ) -> SpotifySelection:
+        if reference.kind == "track":
+            payload = await self.spotify_api_get(f"/tracks/{reference.item_id}")
+            track = spotify_track_from_payload(payload)
+            if not track:
+                raise commands.CommandError(
+                    "That Spotify track is not playable or is missing metadata."
+                )
+            return SpotifySelection(
+                reference=reference,
+                title=track.display_title,
+                tracks=[track],
+                total=1,
+                limited=False,
+            )
+
+        if reference.kind == "album":
+            payload = await self.spotify_api_get(f"/albums/{reference.item_id}")
+            tracks_page = payload.get("tracks", {})
+            raw_items = await self.collect_spotify_items(
+                tracks_page,
+                SPOTIFY_TRACK_LIMIT,
+            )
+            tracks = list(filter(None, map(spotify_track_from_payload, raw_items)))
+            total = spotify_total(tracks_page.get("total"), len(raw_items))
+            if not tracks:
+                raise commands.CommandError(
+                    "That Spotify album did not contain any playable tracks."
+                )
+            return SpotifySelection(
+                reference=reference,
+                title=payload.get("name") or "Spotify Album",
+                tracks=tracks,
+                total=total,
+                limited=total > SPOTIFY_TRACK_LIMIT,
+                skipped_unplayable=len(raw_items) - len(tracks),
+            )
+
+        if reference.kind == "playlist":
+            playlist = await self.spotify_api_get(
+                f"/playlists/{reference.item_id}",
+                params={"fields": "name,tracks(total)"},
+            )
+            tracks_page = await self.spotify_api_get(
+                f"/playlists/{reference.item_id}/tracks",
+                params={
+                    "limit": min(SPOTIFY_TRACK_LIMIT, 50),
+                    "fields": (
+                        "total,next,items(track(name,artists(name),duration_ms,"
+                        "external_urls,type,is_local))"
+                    ),
+                },
+            )
+            raw_items = await self.collect_spotify_items(
+                tracks_page,
+                SPOTIFY_TRACK_LIMIT,
+            )
+            track_payloads = [
+                item.get("track")
+                for item in raw_items
+                if isinstance(item.get("track"), dict)
+            ]
+            tracks = list(
+                filter(None, map(spotify_track_from_payload, track_payloads))
+            )
+            playlist_tracks = playlist.get("tracks")
+            total = spotify_total(
+                tracks_page.get("total"),
+                len(raw_items),
+            )
+            if not isinstance(playlist_tracks, dict):
+                playlist_tracks = {}
+            total = spotify_total(playlist_tracks.get("total"), total)
+            if not tracks:
+                raise commands.CommandError(
+                    "That Spotify playlist did not contain any playable tracks."
+                )
+            return SpotifySelection(
+                reference=reference,
+                title=playlist.get("name") or "Spotify Playlist",
+                tracks=tracks,
+                total=total,
+                limited=total > SPOTIFY_TRACK_LIMIT,
+                skipped_unplayable=len(raw_items) - len(tracks),
+            )
+
+        raise commands.CommandError("That Spotify link type is not supported.")
 
     def make_ffmpeg_options(self, state: GuildMusicState) -> dict[str, str]:
         options = FFMPEG_OPTIONS.copy()
@@ -391,6 +760,9 @@ class Music(commands.Cog, name="Music"):
             if state.player_task:
                 state.player_task.cancel()
 
+        if self.http_session and not self.http_session.closed:
+            await self.http_session.close()
+
     async def ensure_voice(
         self,
         ctx: commands.Context,
@@ -439,7 +811,15 @@ class Music(commands.Cog, name="Music"):
                 return None
             raise
 
-    async def extract_track(self, query: str, requester_id: int) -> Track:
+    async def extract_track(
+        self,
+        query: str,
+        requester_id: int,
+        *,
+        display_title: str | None = None,
+        webpage_url: str | None = None,
+        duration: int | None = None,
+    ) -> Track:
         loop = asyncio.get_running_loop()
         info = await loop.run_in_executor(
             None,
@@ -460,22 +840,138 @@ class Music(commands.Cog, name="Music"):
             info = entries[0]
 
         stream_url = info.get("url")
-        webpage_url = info.get("webpage_url") or query
-        title = info.get("title") or "Unknown Track"
-        duration = info.get("duration")
+        resolved_webpage_url = webpage_url or info.get("webpage_url") or query
+        title = display_title or info.get("title") or "Unknown Track"
+        resolved_duration = duration if duration is not None else info.get("duration")
 
         if not stream_url:
             raise commands.CommandError(
-                "That link could not be turned into an audio stream. Spotify links may need a matching playable source."
+                "That link could not be turned into an audio stream."
             )
 
         return Track(
             title=title,
-            webpage_url=webpage_url,
+            webpage_url=resolved_webpage_url,
             stream_url=stream_url,
             requester_id=requester_id,
-            duration=duration,
+            duration=resolved_duration,
         )
+
+    async def extract_spotify_track(
+        self,
+        spotify_track: SpotifyTrackMetadata,
+        requester_id: int,
+    ) -> Track:
+        return await self.extract_track(
+            spotify_track.search_query,
+            requester_id,
+            display_title=spotify_track.display_title,
+            webpage_url=spotify_track.spotify_url,
+            duration=spotify_track.duration,
+        )
+
+    async def queue_spotify_selection(
+        self,
+        ctx: commands.Context,
+        voice: discord.VoiceClient,
+        selection: SpotifySelection,
+    ):
+        state = self.get_state(ctx.guild.id)
+        was_busy = (
+            voice.is_playing()
+            or voice.is_paused()
+            or state.now_playing is not None
+            or not state.queue.empty()
+        )
+        loading_message = None
+
+        if len(selection.tracks) > 1:
+            description = (
+                f"Loading **{len(selection.tracks)}** Spotify track(s) from "
+                f"**{selection.title}**..."
+            )
+            if selection.limited:
+                description += (
+                    f"\nOnly the first **{SPOTIFY_TRACK_LIMIT}** Spotify items "
+                    "will be loaded."
+                )
+            loading_message = await ctx.send(
+                embed=discord.Embed(
+                    description=description,
+                    color=COLOR_INFO,
+                )
+            )
+
+        added = 0
+        failed = 0
+        first_track: Track | None = None
+
+        for spotify_track in selection.tracks:
+            try:
+                track = await self.extract_spotify_track(
+                    spotify_track,
+                    ctx.author.id,
+                )
+            except Exception as exc:
+                failed += 1
+                log.warning(
+                    "Could not resolve Spotify track %s to a playable source: %s",
+                    spotify_track.spotify_url,
+                    exc,
+                )
+                continue
+
+            await state.queue.put(track)
+            first_track = first_track or track
+            added += 1
+
+            if added == 1:
+                await self.start_player(ctx.guild)
+
+        if added == 0:
+            embed = discord.Embed(
+                description=(
+                    "I found the Spotify metadata, but couldn't match any of it "
+                    "to a playable audio source."
+                ),
+                color=COLOR_ERROR,
+            )
+            if loading_message:
+                return await loading_message.edit(embed=embed)
+            return await ctx.send(embed=embed)
+
+        if len(selection.tracks) == 1 and first_track:
+            action = "Queued" if was_busy else "Loaded"
+            description = (
+                f"{action} Spotify track "
+                f"[{first_track.title}]({first_track.webpage_url})"
+            )
+        else:
+            description = (
+                f"Queued **{added}** track(s) from Spotify "
+                f"{selection.reference.kind} **{selection.title}**."
+            )
+
+        if selection.skipped_unplayable:
+            description += (
+                f"\nSkipped **{selection.skipped_unplayable}** Spotify item(s) "
+                "that were local files, podcasts, or missing metadata."
+            )
+        if failed:
+            description += (
+                f"\nSkipped **{failed}** track(s) that could not be matched to audio."
+            )
+        if selection.limited:
+            description += (
+                f"\nLoaded the first **{SPOTIFY_TRACK_LIMIT}** of "
+                f"**{selection.total}** Spotify item(s)."
+            )
+
+        embed = discord.Embed(description=description, color=COLOR_INFO)
+        if loading_message:
+            await loading_message.edit(embed=embed)
+        else:
+            await ctx.send(embed=embed)
 
     async def start_player(self, guild: discord.Guild):
         state = self.get_state(guild.id)
@@ -572,6 +1068,27 @@ class Music(commands.Cog, name="Music"):
         if voice is None:
             return
 
+        spotify_reference = parse_spotify_reference(query)
+        if spotify_reference:
+            try:
+                selection = await self.resolve_spotify_reference(spotify_reference)
+                return await self.queue_spotify_selection(ctx, voice, selection)
+            except commands.CommandError as exc:
+                return await ctx.send(
+                    embed=discord.Embed(
+                        description=str(exc),
+                        color=COLOR_ERROR,
+                    )
+                )
+            except Exception as exc:
+                log.exception("Failed to load Spotify link %s", spotify_reference.url)
+                return await ctx.send(
+                    embed=discord.Embed(
+                        description=f"Failed to load that Spotify link: {exc}",
+                        color=COLOR_ERROR,
+                    )
+                )
+
         try:
             track = await self.extract_track(query, ctx.author.id)
         except commands.CommandError as exc:
@@ -590,16 +1107,19 @@ class Music(commands.Cog, name="Music"):
             )
 
         state = self.get_state(ctx.guild.id)
+        was_busy = (
+            voice.is_playing()
+            or voice.is_paused()
+            or state.now_playing is not None
+            or not state.queue.empty()
+        )
         await state.queue.put(track)
         await self.start_player(ctx.guild)
 
-        if voice.is_playing() or state.now_playing is not None:
+        if was_busy:
             description = f"Queued [{track.title}]({track.webpage_url})"
         else:
             description = f"Loaded [{track.title}]({track.webpage_url})"
-
-        if "spotify.com" in query.lower():
-            description += "\nSpotify links are best-effort and may fall back depending on what yt-dlp can resolve."
 
         await ctx.send(
             embed=discord.Embed(

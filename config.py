@@ -54,6 +54,12 @@ PROJECT_REPO_URL = "https://github.com/Kieranmcm07/Discord_Moderation_Bot"
 # Database path.
 DB_PATH = os.getenv("DB_PATH", "data/bot.db")
 
+# Optional Spotify Web API support for music commands. Spotify is used for
+# metadata only; playback still resolves through the existing yt-dlp flow.
+SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID", "").strip()
+SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET", "").strip()
+SPOTIFY_MAX_TRACKS = parse_int_env("SPOTIFY_MAX_TRACKS", 50)
+
 # Optional logging channels kept for backwards compatibility with older configs.
 MOD_LOG_CHANNEL_ID = parse_int_env("MOD_LOG_CHANNEL_ID")
 INVITE_LOG_CHANNEL_ID = parse_int_env("INVITE_LOG_CHANNEL_ID")

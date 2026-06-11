@@ -198,6 +198,8 @@ GitHub project page.
   - Server Members Intent
   - Message Content Intent
 - FFmpeg on your system path if you want to use the music commands
+- Optional Spotify developer app credentials if you want `,play` to accept
+  Spotify track, album, and playlist links
 
 Recommended Discord permissions:
 
@@ -246,12 +248,16 @@ MOD_LOG_CHANNEL_ID=0
 INVITE_LOG_CHANNEL_ID=0
 JOIN_LOG_CHANNEL_ID=0
 DB_PATH=data/bot.db
+SPOTIFY_CLIENT_ID=
+SPOTIFY_CLIENT_SECRET=
+SPOTIFY_MAX_TRACKS=50
 BOT_FAILURE_MODE=retry
 BOT_RETRY_DELAY_SECONDS=5
 ```
 
-Only `BOT_TOKEN` is required. The other values can be left as defaults or
-configured later with bot commands.
+Only `BOT_TOKEN` is required. Spotify values are only needed for Spotify music
+links. The other values can be left as defaults or configured later with bot
+commands.
 
 5. Run the bot.
 
@@ -265,6 +271,29 @@ command instead:
 ```bash
 python main.py
 ```
+
+### Optional Spotify Music Links
+
+To use Spotify URLs with `,play`, create a Spotify app in the Spotify Developer
+Dashboard and copy its Client ID and Client Secret into `.env`:
+
+```env
+SPOTIFY_CLIENT_ID=your_client_id
+SPOTIFY_CLIENT_SECRET=your_client_secret
+SPOTIFY_MAX_TRACKS=50
+```
+
+Supported inputs:
+
+- `https://open.spotify.com/track/...`
+- `https://open.spotify.com/album/...`
+- `https://open.spotify.com/playlist/...`
+- `spotify:track:...`, `spotify:album:...`, and `spotify:playlist:...`
+
+Spotify is used for metadata only. The bot reads the Spotify title/artist list,
+then searches for a playable audio match through the existing `yt-dlp` music
+flow. `SPOTIFY_MAX_TRACKS` caps album and playlist expansion between 1 and 100
+tracks so a very large playlist does not lock up the music command.
 
 ## Windows Helper Scripts
 
@@ -479,7 +508,7 @@ The default prefix in this README is `,`. Change it with `PREFIX` in `.env`.
 | Command | Description |
 | --- | --- |
 | `,join` | Join your current voice channel |
-| `,play <url or search>` | Play audio from a URL or search term |
+| `,play <url, search, or Spotify link>` | Play audio from a URL, search term, Spotify track, Spotify album, or Spotify playlist |
 | `,queue` | Show the queue |
 | `,controls` | Show interactive music controls |
 | `,skip` | Skip the current track |
