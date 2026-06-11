@@ -59,6 +59,7 @@ DB_PATH = os.getenv("DB_PATH", "data/bot.db")
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID", "").strip()
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET", "").strip()
 SPOTIFY_MAX_TRACKS = parse_int_env("SPOTIFY_MAX_TRACKS", 50)
+SPOTIFY_MARKET = os.getenv("SPOTIFY_MARKET", "US").strip().upper()
 
 # Optional logging channels kept for backwards compatibility with older configs.
 MOD_LOG_CHANNEL_ID = parse_int_env("MOD_LOG_CHANNEL_ID")

@@ -107,6 +107,31 @@ def read_status(path: Path):
         return None
 
 
+def read_startup_count(project_dir: Path) -> int | None:
+    try:
+        raw_count = (project_dir / "data" / "startup_count.txt").read_text(
+            encoding="utf-8"
+        )
+        count = int(raw_count.strip())
+    except (FileNotFoundError, OSError, ValueError):
+        return None
+    return count if count > 0 else None
+
+
+def startup_counter_text(project_dir: Path, status: dict | None = None) -> str:
+    count = None
+    if status:
+        try:
+            count = int(status.get("startup_count") or 0)
+        except (TypeError, ValueError):
+            count = None
+    if not count:
+        count = read_startup_count(project_dir)
+    if count:
+        return f"Startup counter: #{count}"
+    return "Startup counter: waiting for first launch..."
+
+
 def pid_is_running(pid: int) -> bool:
     """Return whether a process id currently appears to be alive."""
     if pid <= 0:
@@ -265,14 +290,18 @@ def stop_child_process(process: subprocess.Popen):
 
 def main():
     enable_ansi()
+    project_dir = Path(__file__).resolve().parent
     show_banner(
         BOOT_BANNER,
         "36",
-        "Starting Discord Moderation bot. Logs will appear below.\n",
+        (
+            "Starting Discord Moderation bot.\n"
+            f"{startup_counter_text(project_dir)}\n"
+            "Logs will appear below.\n"
+        ),
     )
     print(paint(CREDITS_BANNER, "95"))
 
-    project_dir = Path(__file__).resolve().parent
     log_file = project_dir / "bot.log"
     log_offset = log_file.stat().st_size if log_file.exists() else 0
     status_file = Path(tempfile.gettempdir()) / "discord_mod_bot_status.json"
@@ -284,6 +313,7 @@ def main():
         print(paint(SUCCESS_BANNER, "92"))
         print(paint(STAR_BANNER, "95"))
         print(paint(f"Bot is already running with PID {running_pid}.", "92"))
+        print(paint(startup_counter_text(project_dir), "92"))
         time.sleep(2)
         return 0
 
@@ -330,7 +360,11 @@ def main():
                     show_banner(
                         BOOT_BANNER,
                         "36",
-                        f"{message}\nLogs will appear below.\n",
+                        (
+                            f"{message}\n"
+                            f"{startup_counter_text(project_dir, status)}\n"
+                            "Logs will appear below.\n"
+                        ),
                     )
                     print(paint(CREDITS_BANNER, "95"))
                     deadline = time.time() + STARTUP_TIMEOUT_SECONDS
@@ -341,6 +375,7 @@ def main():
                 print(paint(SUCCESS_BANNER, "92"))
                 print(paint(STAR_BANNER, "95"))
                 print(paint(f"Bot online. {message}", "92"))
+                print(paint(startup_counter_text(project_dir, status), "92"))
                 time.sleep(2)
                 return 0
 

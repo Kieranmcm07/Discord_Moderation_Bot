@@ -251,6 +251,7 @@ DB_PATH=data/bot.db
 SPOTIFY_CLIENT_ID=
 SPOTIFY_CLIENT_SECRET=
 SPOTIFY_MAX_TRACKS=50
+SPOTIFY_MARKET=US
 BOT_FAILURE_MODE=retry
 BOT_RETRY_DELAY_SECONDS=5
 ```
@@ -281,6 +282,7 @@ Dashboard and copy its Client ID and Client Secret into `.env`:
 SPOTIFY_CLIENT_ID=your_client_id
 SPOTIFY_CLIENT_SECRET=your_client_secret
 SPOTIFY_MAX_TRACKS=50
+SPOTIFY_MARKET=US
 ```
 
 Supported inputs:
@@ -294,6 +296,8 @@ Spotify is used for metadata only. The bot reads the Spotify title/artist list,
 then searches for a playable audio match through the existing `yt-dlp` music
 flow. `SPOTIFY_MAX_TRACKS` caps album and playlist expansion between 1 and 100
 tracks so a very large playlist does not lock up the music command.
+`SPOTIFY_MARKET` controls the country used for Spotify availability checks;
+use `GB` instead of `US` if you want UK availability.
 
 ## Windows Helper Scripts
 

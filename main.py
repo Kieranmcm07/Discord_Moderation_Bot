@@ -118,6 +118,8 @@ ARGS = parse_args()
 STATUS_FILE = Path(ARGS.status_file).resolve() if ARGS.status_file else None
 LOCK_FILE = Path(tempfile.gettempdir()) / "discord_mod_bot.lock"
 STOP_REQUEST_FILE = Path(tempfile.gettempdir()) / "discord_mod_bot_stop.json"
+STARTUP_COUNT_FILE = Path("data/startup_count.txt")
+STARTUP_COUNT = 0
 LOCK_ACQUIRED = False
 
 
@@ -204,11 +206,32 @@ def write_status(state: str, message: str, **extra):
 
     STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
     payload = {"state": state, "message": message}
+    if STARTUP_COUNT:
+        payload["startup_count"] = STARTUP_COUNT
     payload.update(extra)
     STATUS_FILE.write_text(
         json.dumps(payload, ensure_ascii=True),
         encoding="utf-8",
     )
+
+
+def increment_startup_count() -> int:
+    """Persist and return how many times this bot process has been launched."""
+    try:
+        STARTUP_COUNT_FILE.parent.mkdir(parents=True, exist_ok=True)
+        raw_count = STARTUP_COUNT_FILE.read_text(encoding="utf-8").strip()
+        count = int(raw_count) if raw_count else 0
+    except (OSError, ValueError):
+        count = 0
+
+    count += 1
+
+    try:
+        STARTUP_COUNT_FILE.write_text(str(count), encoding="utf-8")
+    except OSError:
+        log.warning("Could not write startup counter to %s", STARTUP_COUNT_FILE)
+
+    return count
 
 
 def _pid_is_running(pid: int) -> bool:
@@ -476,14 +499,18 @@ class MyBot(commands.Bot):
     async def on_ready(self):
         """Log a clean ready message and refresh the public presence text."""
         log.info(
-            "Bot online as %s (ID: %s). Serving %s guild(s).",
+            "Bot online as %s (ID: %s). Serving %s guild(s). Startup #%s.",
             self.user,
             self.user.id,
             len(self.guilds),
+            STARTUP_COUNT,
         )
         write_status(
             "ready",
-            f"Logged in as {self.user} across {len(self.guilds)} guild(s)",
+            (
+                f"Logged in as {self.user} across {len(self.guilds)} guild(s) "
+                f"(startup #{STARTUP_COUNT})"
+            ),
         )
 
         await self.change_presence(
@@ -756,12 +783,17 @@ async def run_bot_once():
 
 async def main():
     """Run the bot, optionally retrying unexpected top-level failures."""
+    global STARTUP_COUNT
+
+    STARTUP_COUNT = increment_startup_count()
+    log.info("Startup counter: #%s", STARTUP_COUNT)
+
     attempt = 1
     while True:
         attempt_message = (
-            f"Booting bot... (attempt {attempt})"
+            f"Booting bot... startup #{STARTUP_COUNT} (attempt {attempt})"
             if ARGS.failure_mode == "retry"
-            else "Booting bot..."
+            else f"Booting bot... startup #{STARTUP_COUNT}"
         )
         write_status("starting", attempt_message)
         if attempt > 1:

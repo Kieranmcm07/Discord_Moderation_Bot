@@ -11,6 +11,7 @@ import discord
 from cogs.invite_logger import invite_uses
 from cogs.moderation import build_chatlog_text, parse_duration
 from cogs.music import parse_spotify_reference, spotify_track_from_payload
+from cogs.music import spotify_playlist_total_from_html, spotify_track_ids_from_html
 from cogs.reminders import parse_duration_prefix
 from utils.embeds import decorate_embed
 from utils.time import parse_db_timestamp, unix_timestamp
@@ -163,6 +164,24 @@ class SpotifyParsingTests(unittest.TestCase):
         self.assertEqual(track.duration, 123)
         self.assertEqual(track.thumbnail_url, "https://example.com/cover.png")
         self.assertIn("official audio", track.search_query)
+
+    def test_spotify_track_ids_from_public_html(self):
+        html = """
+        <meta name="music:song" content="https://open.spotify.com/track/abc123"/>
+        <a href="/track/def456">Song</a>
+        <a href="/track/abc123">Duplicate</a>
+        <div>spotify:track:ghi789</div>
+        """
+
+        self.assertEqual(
+            spotify_track_ids_from_html(html, 10),
+            ["abc123", "def456", "ghi789"],
+        )
+
+    def test_spotify_playlist_total_from_public_html(self):
+        html = '<meta name="description" content="Playlist &middot; General &middot; 154 items"/>'
+
+        self.assertEqual(spotify_playlist_total_from_html(html), 154)
 
 
 if __name__ == "__main__":

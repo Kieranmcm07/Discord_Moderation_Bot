@@ -12,8 +12,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import html
 import logging
 import random
+import re
 import shlex
 import time
 from dataclasses import dataclass
@@ -32,6 +34,7 @@ from config import (
     COLOR_SUCCESS,
     SPOTIFY_CLIENT_ID,
     SPOTIFY_CLIENT_SECRET,
+    SPOTIFY_MARKET,
     SPOTIFY_MAX_TRACKS,
 )
 from utils.errors import SafeView
@@ -56,6 +59,10 @@ SPOTIFY_API_BASE_URL = "https://api.spotify.com/v1"
 SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_SUPPORTED_TYPES = {"track", "album", "playlist"}
 SPOTIFY_TRACK_LIMIT = max(1, min(SPOTIFY_MAX_TRACKS, 100))
+SPOTIFY_WEB_HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
 MUSIC_FILTERS = {
     "off": {
@@ -272,6 +279,49 @@ def spotify_track_from_payload(
 
 def spotify_total(value: Any, fallback: int) -> int:
     return value if isinstance(value, int) else fallback
+
+
+def spotify_params(**extra: str | int) -> dict[str, str | int] | None:
+    params: dict[str, str | int] = {
+        key: value for key, value in extra.items() if value not in {None, ""}
+    }
+    if SPOTIFY_MARKET:
+        params.setdefault("market", SPOTIFY_MARKET)
+    return params or None
+
+
+def spotify_track_ids_from_html(html_text: str, limit: int) -> list[str]:
+    track_ids: list[str] = []
+    seen: set[str] = set()
+    patterns = [
+        r"https://open\.spotify\.com/track/([A-Za-z0-9]+)",
+        r"href=[\"']/track/([A-Za-z0-9]+)",
+        r"spotify:track:([A-Za-z0-9]+)",
+    ]
+
+    for pattern in patterns:
+        for match in re.finditer(pattern, html_text):
+            track_id = match.group(1)
+            if track_id in seen:
+                continue
+            seen.add(track_id)
+            track_ids.append(track_id)
+            if len(track_ids) >= limit:
+                return track_ids
+
+    return track_ids
+
+
+def spotify_playlist_total_from_html(html_text: str) -> int | None:
+    text = html.unescape(html_text)
+    match = re.search(r"(\d[\d,]*)\s+items?", text, flags=re.IGNORECASE)
+    if not match:
+        return None
+
+    try:
+        return int(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
 
 
 def spotify_image_url(payload: dict[str, Any] | None) -> str | None:
@@ -573,6 +623,8 @@ class Music(commands.Cog, name="Music"):
         self,
         first_page: dict[str, Any],
         limit: int,
+        *,
+        follow_next: bool = True,
     ) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         page = first_page
@@ -585,18 +637,156 @@ class Music(commands.Cog, name="Music"):
                     items.append(item)
 
             next_url = page.get("next")
-            if not next_url or len(items) >= limit:
+            if not follow_next or not next_url or len(items) >= limit:
                 break
             page = await self.spotify_api_get(next_url)
 
         return items
+
+    async def get_spotify_playlist_tracks_page(
+        self,
+        reference: SpotifyReference,
+    ) -> dict[str, Any]:
+        try:
+            return await self.spotify_api_get(
+                f"/playlists/{reference.item_id}/tracks",
+                params=spotify_params(limit=min(SPOTIFY_TRACK_LIMIT, 50)),
+            )
+        except commands.CommandError as exc:
+            log.warning(
+                "Spotify playlist %s tracks endpoint fallback failed: %s",
+                reference.item_id,
+                exc,
+            )
+            return {}
+
+    async def get_spotify_playlist_web_preview(
+        self,
+        reference: SpotifyReference,
+    ) -> tuple[list[str], int | None]:
+        session = await self.get_http_session()
+        urls = [
+            reference.url,
+            f"https://open.spotify.com/embed/playlist/{reference.item_id}",
+        ]
+        track_ids: list[str] = []
+        seen: set[str] = set()
+        total: int | None = None
+
+        for url in urls:
+            try:
+                async with session.get(
+                    url,
+                    headers=SPOTIFY_WEB_HEADERS,
+                ) as response:
+                    if response.status >= 400:
+                        log.warning(
+                            "Spotify web playlist fallback failed with HTTP %s for %s",
+                            response.status,
+                            url,
+                        )
+                        continue
+                    html_text = await response.text()
+            except aiohttp.ClientError as exc:
+                log.warning(
+                    "Spotify web playlist fallback could not reach %s: %s",
+                    url,
+                    exc,
+                )
+                continue
+
+            if total is None:
+                total = spotify_playlist_total_from_html(html_text)
+
+            for track_id in spotify_track_ids_from_html(
+                html_text,
+                SPOTIFY_TRACK_LIMIT,
+            ):
+                if track_id in seen:
+                    continue
+                seen.add(track_id)
+                track_ids.append(track_id)
+                if len(track_ids) >= SPOTIFY_TRACK_LIMIT:
+                    break
+
+            if len(track_ids) >= SPOTIFY_TRACK_LIMIT:
+                break
+
+        log.info(
+            "Spotify web playlist fallback found %s track id(s) for %s.",
+            len(track_ids),
+            reference.item_id,
+        )
+        return track_ids, total
+
+    async def spotify_tracks_from_ids(
+        self,
+        track_ids: list[str],
+        fallback_thumbnail_url: str | None = None,
+    ) -> list[SpotifyTrackMetadata]:
+        tracks: list[SpotifyTrackMetadata] = []
+        for start in range(0, len(track_ids), 50):
+            batch = track_ids[start : start + 50]
+            try:
+                payload = await self.spotify_api_get(
+                    "/tracks",
+                    params=spotify_params(ids=",".join(batch)),
+                )
+                payload_tracks = payload.get("tracks", [])
+                if not isinstance(payload_tracks, list):
+                    payload_tracks = []
+            except commands.CommandError as exc:
+                log.warning(
+                    "Spotify batch track lookup failed for %s track id(s): %s",
+                    len(batch),
+                    exc,
+                )
+                payload_tracks = []
+
+            batch_tracks_before = len(tracks)
+            for payload_track in payload_tracks:
+                track = spotify_track_from_payload(
+                    payload_track,
+                    fallback_thumbnail_url,
+                )
+                if track:
+                    tracks.append(track)
+
+            if len(tracks) > batch_tracks_before:
+                continue
+
+            for track_id in batch:
+                try:
+                    payload_track = await self.spotify_api_get(
+                        f"/tracks/{track_id}",
+                        params=spotify_params(),
+                    )
+                except commands.CommandError as exc:
+                    log.warning(
+                        "Spotify single track fallback failed for %s: %s",
+                        track_id,
+                        exc,
+                    )
+                    continue
+
+                track = spotify_track_from_payload(
+                    payload_track,
+                    fallback_thumbnail_url,
+                )
+                if track:
+                    tracks.append(track)
+
+        return tracks
 
     async def resolve_spotify_reference(
         self,
         reference: SpotifyReference,
     ) -> SpotifySelection:
         if reference.kind == "track":
-            payload = await self.spotify_api_get(f"/tracks/{reference.item_id}")
+            payload = await self.spotify_api_get(
+                f"/tracks/{reference.item_id}",
+                params=spotify_params(),
+            )
             track = spotify_track_from_payload(payload)
             if not track:
                 raise commands.CommandError(
@@ -611,7 +801,10 @@ class Music(commands.Cog, name="Music"):
             )
 
         if reference.kind == "album":
-            payload = await self.spotify_api_get(f"/albums/{reference.item_id}")
+            payload = await self.spotify_api_get(
+                f"/albums/{reference.item_id}",
+                params=spotify_params(),
+            )
             album_thumbnail_url = spotify_image_url(payload)
             tracks_page = payload.get("tracks", {})
             raw_items = await self.collect_spotify_items(
@@ -643,30 +836,47 @@ class Music(commands.Cog, name="Music"):
         if reference.kind == "playlist":
             playlist = await self.spotify_api_get(
                 f"/playlists/{reference.item_id}",
-                params={"fields": "name,tracks(total)"},
+                params=spotify_params(),
             )
-            tracks_page = await self.spotify_api_get(
-                f"/playlists/{reference.item_id}/tracks",
-                params={
-                    "limit": min(SPOTIFY_TRACK_LIMIT, 50),
-                    "fields": (
-                        "total,next,items(track(name,artists(name),duration_ms,"
-                        "external_urls,type,is_local,album(images(url))))"
-                    ),
-                },
-            )
+            playlist_thumbnail_url = spotify_image_url(playlist)
+            tracks_page = playlist.get("tracks", {})
+            if not isinstance(tracks_page, dict):
+                tracks_page = {}
             raw_items = await self.collect_spotify_items(
                 tracks_page,
                 SPOTIFY_TRACK_LIMIT,
+                follow_next=False,
             )
+            if not raw_items:
+                tracks_page = await self.get_spotify_playlist_tracks_page(reference)
+                raw_items = await self.collect_spotify_items(
+                    tracks_page,
+                    SPOTIFY_TRACK_LIMIT,
+                )
             track_payloads = [
                 item.get("track")
                 for item in raw_items
                 if isinstance(item.get("track"), dict)
             ]
-            tracks = list(
-                filter(None, map(spotify_track_from_payload, track_payloads))
-            )
+            if raw_items and not track_payloads:
+                tracks_page = await self.get_spotify_playlist_tracks_page(reference)
+                raw_items = await self.collect_spotify_items(
+                    tracks_page,
+                    SPOTIFY_TRACK_LIMIT,
+                )
+                track_payloads = [
+                    item.get("track")
+                    for item in raw_items
+                    if isinstance(item.get("track"), dict)
+                ]
+            tracks = [
+                track
+                for track in (
+                    spotify_track_from_payload(item, playlist_thumbnail_url)
+                    for item in track_payloads
+                )
+                if track
+            ]
             playlist_tracks = playlist.get("tracks")
             total = spotify_total(
                 tracks_page.get("total"),
@@ -676,16 +886,35 @@ class Music(commands.Cog, name="Music"):
                 playlist_tracks = {}
             total = spotify_total(playlist_tracks.get("total"), total)
             if not tracks:
+                web_track_ids, web_total = await self.get_spotify_playlist_web_preview(
+                    reference
+                )
+                tracks = await self.spotify_tracks_from_ids(
+                    web_track_ids,
+                    playlist_thumbnail_url,
+                )
+                if web_total is not None:
+                    total = web_total
+                else:
+                    total = max(total, len(tracks))
+
+            if not tracks:
+                log.warning(
+                    "Spotify playlist %s returned %s item(s), %s track payload(s), and 0 playable tracks.",
+                    reference.item_id,
+                    len(raw_items),
+                    len(track_payloads),
+                )
                 raise commands.CommandError(
-                    "That Spotify playlist did not contain any playable tracks."
+                    "Spotify loaded that playlist, but did not return any usable track details for it. Try a public playlist or a direct Spotify track link."
                 )
             return SpotifySelection(
                 reference=reference,
                 title=playlist.get("name") or "Spotify Playlist",
                 tracks=tracks,
                 total=total,
-                limited=total > SPOTIFY_TRACK_LIMIT,
-                skipped_unplayable=len(raw_items) - len(tracks),
+                limited=total > len(tracks),
+                skipped_unplayable=max(0, len(raw_items) - len(tracks)),
             )
 
         raise commands.CommandError("That Spotify link type is not supported.")
@@ -1193,7 +1422,7 @@ class Music(commands.Cog, name="Music"):
             )
         if selection.limited:
             description += (
-                f"\nLoaded the first **{SPOTIFY_TRACK_LIMIT}** of "
+                f"\nLoaded **{len(selection.tracks)}** of "
                 f"**{selection.total}** Spotify item(s)."
             )
 
