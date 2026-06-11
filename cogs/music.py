@@ -142,6 +142,7 @@ class Track:
     duration: int | None = None
     thumbnail_url: str | None = None
     http_headers: dict[str, str] | None = None
+    replay_query: str | None = None
 
     @property
     def duration_text(self) -> str:
@@ -351,6 +352,7 @@ class GuildMusicState:
         self.player_message: discord.Message | None = None
         self.loop_enabled = False
         self.skip_requested = False
+        self.stop_requested = False
         self.restart_requested = False
         self.filter_name = "off"
         self.volume = 1.0
@@ -438,8 +440,13 @@ class MusicControlView(SafeView):
 
         state = self.cog.get_state(self.guild_id)
         state.skip_requested = True
+        state.stop_requested = False
+        state.restart_requested = False
         voice.stop()
-        await self.refresh_player(interaction, "Skipped the current track.")
+        await interaction.response.send_message(
+            "Skipping the current track.",
+            ephemeral=True,
+        )
 
     @discord.ui.button(label="Loop", emoji="🔁", style=discord.ButtonStyle.secondary)
     async def loop(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -478,9 +485,16 @@ class MusicControlView(SafeView):
         state.now_playing = None
         state.loop_enabled = False
         state.skip_requested = True
+        state.stop_requested = True
         state.restart_requested = False
-        if voice.is_playing() or voice.is_paused():
+        was_active = voice.is_playing() or voice.is_paused()
+        if was_active:
             voice.stop()
+            return await interaction.response.send_message(
+                "Stopped playback and cleared the queue.",
+                ephemeral=True,
+            )
+
         await self.refresh_player(
             interaction,
             "Stopped playback and cleared the queue.",
@@ -976,7 +990,15 @@ class Music(commands.Cog, name="Music"):
         display_track = track or state.last_track
         loop_text = "On" if state.loop_enabled else "Off"
         voice = guild.voice_client
-        if voice and voice.is_paused():
+        if state.restart_requested and track:
+            status_text = "Restarting"
+            status_icon = "🔄"
+            color = COLOR_INFO
+        elif state.skip_requested and track:
+            status_text = "Skipping"
+            status_icon = "⏭️"
+            color = COLOR_INFO
+        elif voice and voice.is_paused():
             status_text = "Paused"
             status_icon = "⏸️"
             color = COLOR_INFO
@@ -991,16 +1013,16 @@ class Music(commands.Cog, name="Music"):
 
         if track:
             embed = discord.Embed(
-                title="Now Playing",
+                title=f"{status_icon} Now Playing",
                 description=(
-                    f"**[{track.title}]({track.webpage_url})**\n"
+                    f"### [{track.title}]({track.webpage_url})\n"
                     f"`{track.duration_text}` • requested by <@{track.requester_id}>"
                 ),
                 color=color,
             )
         elif display_track:
             embed = discord.Embed(
-                title="Music Controls",
+                title="⏹️ Music Idle",
                 description=(
                     "Nothing is playing right now.\n"
                     f"Last track: **[{display_track.title}]({display_track.webpage_url})**"
@@ -1009,7 +1031,7 @@ class Music(commands.Cog, name="Music"):
             )
         else:
             embed = discord.Embed(
-                title="Music Controls",
+                title="⏹️ Music Idle",
                 description="Nothing is playing right now.",
                 color=color,
             )
@@ -1025,23 +1047,23 @@ class Music(commands.Cog, name="Music"):
             embed.set_thumbnail(url=display_track.thumbnail_url)
 
         embed.add_field(
-            name="Playback",
-            value=f"{status_icon} {status_text}",
+            name="Status",
+            value=f"{status_icon} **{status_text}**",
             inline=True,
         )
         embed.add_field(
             name="Queue",
-            value=f"🎵 {state.queue.qsize()} waiting",
+            value=f"🎵 **{state.queue.qsize()}** waiting",
             inline=True,
         )
-        embed.add_field(name="Loop", value=f"🔁 {loop_text}", inline=True)
+        embed.add_field(name="Loop", value=f"🔁 **{loop_text}**", inline=True)
 
         queued = list(state.queue._queue)
         if queued:
             next_track = queued[0]
             embed.add_field(
                 name="Next Up",
-                value=f"[{next_track.title}]({next_track.webpage_url})",
+                value=f"🎧 [{next_track.title}]({next_track.webpage_url})",
                 inline=False,
             )
 
@@ -1052,20 +1074,108 @@ class Music(commands.Cog, name="Music"):
                 inline=False,
             )
 
-        embed.set_footer(text="Use the buttons below to control playback")
+        embed.set_footer(text="Live music controls")
         return embed
 
-    async def deactivate_player_message(self, state: GuildMusicState):
+    def build_archived_player_embed(
+        self,
+        guild: discord.Guild,
+        state: GuildMusicState,
+        track: Track,
+        *,
+        title: str,
+        status: str,
+        icon: str,
+        color: int,
+    ) -> discord.Embed:
+        embed = discord.Embed(
+            title=f"{icon} {title}",
+            description=(
+                f"### [{track.title}]({track.webpage_url})\n"
+                f"`{track.duration_text}` • requested by <@{track.requester_id}>"
+            ),
+            color=color,
+        )
+
+        bot_user = self.bot.user
+        if bot_user:
+            embed.set_author(
+                name="Nokturnal Music",
+                icon_url=bot_user.display_avatar.url,
+            )
+
+        if track.thumbnail_url:
+            embed.set_thumbnail(url=track.thumbnail_url)
+
+        embed.add_field(name="Status", value=f"{icon} **{status}**", inline=True)
+        embed.add_field(
+            name="Queue",
+            value=f"🎵 **{state.queue.qsize()}** waiting",
+            inline=True,
+        )
+
+        queued = list(state.queue._queue)
+        if queued:
+            next_track = queued[0]
+            embed.add_field(
+                name="Next Up",
+                value=f"🎧 [{next_track.title}]({next_track.webpage_url})",
+                inline=False,
+            )
+
+        voice = guild.voice_client
+        if voice and voice.channel:
+            embed.add_field(
+                name="Voice Channel",
+                value=f"🔊 {voice.channel.mention}",
+                inline=False,
+            )
+
+        embed.set_footer(text="Archived track panel")
+        return embed
+
+    async def deactivate_player_message(
+        self,
+        state: GuildMusicState,
+        *,
+        embed: discord.Embed | None = None,
+    ):
         if not state.player_message:
             return
+
+        edit_kwargs = {"view": None}
+        if embed:
+            edit_kwargs["embed"] = embed
 
         with contextlib.suppress(
             discord.Forbidden,
             discord.NotFound,
             discord.HTTPException,
         ):
-            await state.player_message.edit(view=None)
+            await state.player_message.edit(**edit_kwargs)
         state.player_message = None
+
+    async def archive_player_message(
+        self,
+        guild: discord.Guild,
+        state: GuildMusicState,
+        track: Track,
+        *,
+        title: str,
+        status: str,
+        icon: str,
+        color: int,
+    ):
+        embed = self.build_archived_player_embed(
+            guild,
+            state,
+            track,
+            title=title,
+            status=status,
+            icon=icon,
+            color=color,
+        )
+        await self.deactivate_player_message(state, embed=embed)
 
     async def announce_now_playing(
         self,
@@ -1135,6 +1245,7 @@ class Music(commands.Cog, name="Music"):
 
         state.now_playing = None
         state.skip_requested = False
+        state.stop_requested = False
         state.restart_requested = False
         log.info(
             "Disconnecting idle music voice client in guild %s after %s seconds.",
@@ -1158,6 +1269,7 @@ class Music(commands.Cog, name="Music"):
         state = self.get_state(ctx.guild.id)
         if state.now_playing and voice and (voice.is_playing() or voice.is_paused()):
             state.restart_requested = True
+            state.stop_requested = False
             voice.stop()
 
         await ctx.send(
@@ -1326,6 +1438,17 @@ class Music(commands.Cog, name="Music"):
             duration=resolved_duration,
             thumbnail_url=resolved_thumbnail_url,
             http_headers=http_headers,
+            replay_query=query,
+        )
+
+    async def refresh_track_stream(self, track: Track) -> Track:
+        return await self.extract_track(
+            track.replay_query or track.webpage_url or track.title,
+            track.requester_id,
+            display_title=track.title,
+            webpage_url=track.webpage_url,
+            duration=track.duration,
+            thumbnail_url=track.thumbnail_url,
         )
 
     async def extract_spotify_track(
@@ -1469,18 +1592,38 @@ class Music(commands.Cog, name="Music"):
                     await self.disconnect_if_idle(guild, state)
                     return
 
+                refresh_before_play = False
                 while True:
                     voice = await self.get_healthy_voice(guild)
 
                     if voice is None:
                         state.now_playing = None
                         state.skip_requested = False
+                        state.stop_requested = False
                         await self.announce_now_playing(guild, state)
                         break
+
+                    if refresh_before_play:
+                        try:
+                            track = await self.refresh_track_stream(track)
+                        except Exception:
+                            log.exception(
+                                "Failed to refresh music stream in guild %s for %s",
+                                guild.id,
+                                track.webpage_url,
+                            )
+                            state.now_playing = None
+                            state.restart_requested = False
+                            state.skip_requested = False
+                            state.stop_requested = False
+                            await self.announce_now_playing(guild, state)
+                            break
+                        refresh_before_play = False
 
                     state.now_playing = track
                     state.last_track = track
                     state.skip_requested = False
+                    state.stop_requested = False
                     finished = asyncio.Event()
 
                     def after_playback(error: Exception | None):
@@ -1509,22 +1652,64 @@ class Music(commands.Cog, name="Music"):
                         state.now_playing = None
                         state.restart_requested = False
                         state.skip_requested = False
+                        state.stop_requested = False
                         await self.announce_now_playing(guild, state)
                         break
 
                     await finished.wait()
 
                     if state.restart_requested:
+                        await self.archive_player_message(
+                            guild,
+                            state,
+                            track,
+                            title="Restarting Track",
+                            status="Getting a fresh stream",
+                            icon="🔄",
+                            color=COLOR_INFO,
+                        )
                         state.restart_requested = False
+                        refresh_before_play = True
                         continue
 
                     if state.loop_enabled and not state.skip_requested:
+                        await self.archive_player_message(
+                            guild,
+                            state,
+                            track,
+                            title="Looping Track",
+                            status="Replaying now",
+                            icon="🔁",
+                            color=COLOR_INFO,
+                        )
+                        refresh_before_play = True
                         continue
 
+                    if state.stop_requested:
+                        archive_title = "Playback Stopped"
+                        archive_status = "Stopped • not playing"
+                        archive_icon = "⏹️"
+                    elif state.skip_requested:
+                        archive_title = "Track Skipped"
+                        archive_status = "Skipped • not playing"
+                        archive_icon = "⏭️"
+                    else:
+                        archive_title = "Track Finished"
+                        archive_status = "Ended • not playing"
+                        archive_icon = "✅"
+
+                    await self.archive_player_message(
+                        guild,
+                        state,
+                        track,
+                        title=archive_title,
+                        status=archive_status,
+                        icon=archive_icon,
+                        color=COLOR_INFO,
+                    )
                     state.now_playing = None
                     state.skip_requested = False
-                    if state.queue.empty():
-                        await self.announce_now_playing(guild, state)
+                    state.stop_requested = False
                     break
         finally:
             if state.player_task is asyncio.current_task():
@@ -1662,6 +1847,7 @@ class Music(commands.Cog, name="Music"):
 
         state = self.get_state(ctx.guild.id)
         state.skip_requested = True
+        state.stop_requested = False
         state.restart_requested = False
         voice.stop()
         await ctx.send(
@@ -1751,15 +1937,18 @@ class Music(commands.Cog, name="Music"):
                 )
             )
 
+        was_active = voice.is_playing() or voice.is_paused()
         self.clear_queue(state)
 
         state.now_playing = None
         state.loop_enabled = False
         state.skip_requested = True
+        state.stop_requested = True
         state.restart_requested = False
-        if voice.is_playing() or voice.is_paused():
+        if was_active:
             voice.stop()
-        await self.announce_now_playing(ctx.guild, state)
+        else:
+            await self.announce_now_playing(ctx.guild, state)
 
         await ctx.send(
             embed=discord.Embed(
@@ -1789,6 +1978,7 @@ class Music(commands.Cog, name="Music"):
         state.now_playing = None
         state.loop_enabled = False
         state.skip_requested = True
+        state.stop_requested = True
         state.restart_requested = False
         if voice.is_playing() or voice.is_paused():
             voice.stop()
@@ -2060,6 +2250,7 @@ class Music(commands.Cog, name="Music"):
         state.queue._queue.clear()
         state.queue._queue.extend(queued[position - 1 :])
         state.skip_requested = True
+        state.stop_requested = False
         state.restart_requested = False
         if voice and (voice.is_playing() or voice.is_paused()):
             voice.stop()
