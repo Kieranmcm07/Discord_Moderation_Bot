@@ -243,6 +243,8 @@ copy .env.example .env
 ```env
 BOT_TOKEN=YOUR_BOT_TOKEN_HERE
 PREFIX=,
+BOT_VERSION=v1.2.0
+PRESENCE_ROTATION_SECONDS=45
 OWNER_IDS=
 MOD_LOG_CHANNEL_ID=0
 INVITE_LOG_CHANNEL_ID=0
@@ -323,6 +325,8 @@ Environment values are loaded from `.env`.
 | --- | --- |
 | `BOT_TOKEN` | Discord bot token |
 | `PREFIX` | Text command prefix, default `,` |
+| `BOT_VERSION` | Version text shown in the rotating Discord status |
+| `PRESENCE_ROTATION_SECONDS` | Seconds between rotating status updates, minimum `30` |
 | `OWNER_IDS` | Comma-separated Discord user IDs treated as bot owners |
 | `DB_PATH` | SQLite database path, default `data/bot.db` |
 | `BOT_FAILURE_MODE` | `retry` to restart after unexpected failures, or `close` to exit |

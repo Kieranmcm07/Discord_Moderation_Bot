@@ -31,8 +31,10 @@ from discord.ext import commands
 
 from config import (
     BOT_TOKEN,
+    BOT_VERSION,
     OWNER_IDS,
     PREFIX,
+    PRESENCE_ROTATION_SECONDS,
 )
 from utils.db import get_custom_command, init_db
 from utils.embeds import decorate_embed
@@ -384,6 +386,7 @@ class MyBot(commands.Bot):
         )
         self.started_at = discord.utils.utcnow()
         self._stop_watcher_task: asyncio.Task | None = None
+        self._presence_task: asyncio.Task | None = None
         self.tree.on_error = self.on_app_command_error
 
     async def bot_check(self, ctx: commands.Context) -> bool:
@@ -437,6 +440,10 @@ class MyBot(commands.Bot):
             self.watch_stop_requests(),
             name="stop-request-watcher",
         )
+        self._presence_task = asyncio.create_task(
+            self.rotate_presence(),
+            name="presence-rotation",
+        )
 
     async def get_context(self, origin, /, *, cls=commands.Context):
         """Always return our branded context subclass."""
@@ -485,6 +492,53 @@ class MyBot(commands.Bot):
         except Exception:
             log.exception("Stop request watcher failed")
 
+    def build_presence_rotation(self) -> list[discord.Activity]:
+        """Return the rotating status messages shown under the bot name."""
+        guild_count = len(self.guilds)
+        server_word = "server" if guild_count == 1 else "servers"
+        return [
+            discord.Activity(
+                type=discord.ActivityType.watching,
+                name=f"{guild_count} {server_word} | {PREFIX}help",
+            ),
+            discord.Game(name=f"Nokturnal Guard {BOT_VERSION}"),
+            discord.Activity(
+                type=discord.ActivityType.listening,
+                name=f"{PREFIX}play Spotify links",
+            ),
+            discord.Activity(
+                type=discord.ActivityType.watching,
+                name="tickets, cases, and AutoMod",
+            ),
+            discord.Activity(
+                type=discord.ActivityType.watching,
+                name=f"startup #{STARTUP_COUNT}",
+            ),
+        ]
+
+    async def rotate_presence(self):
+        """Rotate the public Discord presence while the bot is online."""
+        try:
+            await self.wait_until_ready()
+            index = 0
+            while not self.is_closed():
+                activities = self.build_presence_rotation()
+                activity = activities[index % len(activities)]
+                try:
+                    await self.change_presence(
+                        status=discord.Status.online,
+                        activity=activity,
+                    )
+                except discord.HTTPException:
+                    log.exception("Discord rejected a presence update")
+
+                index += 1
+                await asyncio.sleep(PRESENCE_ROTATION_SECONDS)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("Presence rotation task failed")
+
     async def close(self):
         """Shut down background helpers before disconnecting."""
 
@@ -493,6 +547,11 @@ class MyBot(commands.Bot):
             self._stop_watcher_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._stop_watcher_task
+
+        if self._presence_task and self._presence_task is not current_task:
+            self._presence_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._presence_task
 
         await super().close()
 
@@ -511,13 +570,6 @@ class MyBot(commands.Bot):
                 f"Logged in as {self.user} across {len(self.guilds)} guild(s) "
                 f"(startup #{STARTUP_COUNT})"
             ),
-        )
-
-        await self.change_presence(
-            activity=discord.Activity(
-                type=discord.ActivityType.watching,
-                name=f"{len(self.guilds)} servers | {PREFIX}help",
-            )
         )
 
     async def on_error(self, event_method: str, *args, **kwargs):
