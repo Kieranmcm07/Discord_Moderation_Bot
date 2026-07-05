@@ -21,7 +21,7 @@ import time
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import aiohttp
 import discord
@@ -36,6 +36,7 @@ from config import (
     SPOTIFY_CLIENT_SECRET,
     SPOTIFY_MARKET,
     SPOTIFY_MAX_TRACKS,
+    YOUTUBE_MAX_TRACKS,
 )
 from utils.errors import SafeView
 
@@ -46,6 +47,12 @@ YTDL_FORMAT_OPTIONS = {
     "no_warnings": True,
     "default_search": "ytsearch1",
     "source_address": "0.0.0.0",
+}
+
+YTDL_PLAYLIST_OPTIONS = {
+    **YTDL_FORMAT_OPTIONS,
+    "noplaylist": False,
+    "extract_flat": "in_playlist",
 }
 
 FFMPEG_OPTIONS = {
@@ -59,6 +66,14 @@ SPOTIFY_API_BASE_URL = "https://api.spotify.com/v1"
 SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_SUPPORTED_TYPES = {"track", "album", "playlist"}
 SPOTIFY_TRACK_LIMIT = max(1, min(SPOTIFY_MAX_TRACKS, 100))
+YOUTUBE_TRACK_LIMIT = max(1, min(YOUTUBE_MAX_TRACKS, 100))
+YOUTUBE_PLAYLIST_HOSTS = {
+    "youtube.com",
+    "www.youtube.com",
+    "m.youtube.com",
+    "music.youtube.com",
+    "youtu.be",
+}
 SPOTIFY_WEB_HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Accept-Language": "en-US,en;q=0.9",
@@ -130,6 +145,9 @@ FILTER_ALIASES = {
 }
 
 ytdl = yt_dlp.YoutubeDL(YTDL_FORMAT_OPTIONS)
+playlist_ytdl = yt_dlp.YoutubeDL(
+    {**YTDL_PLAYLIST_OPTIONS, "playlistend": YOUTUBE_TRACK_LIMIT}
+)
 log = logging.getLogger(__name__)
 
 
@@ -194,6 +212,21 @@ class SpotifySelection:
     skipped_unplayable: int = 0
 
 
+@dataclass(frozen=True)
+class YouTubePlaylistReference:
+    url: str
+    playlist_id: str
+
+
+@dataclass(frozen=True)
+class YouTubePlaylistSelection:
+    reference: YouTubePlaylistReference
+    title: str
+    entries: list[dict[str, Any]]
+    total: int
+    limited: bool
+
+
 def parse_spotify_reference(query: str) -> SpotifyReference | None:
     """Return the first Spotify track/album/playlist reference in a command."""
     for token in query.split():
@@ -238,6 +271,57 @@ def parse_spotify_candidate(value: str) -> SpotifyReference | None:
                     item_id=item_id,
                     url=f"https://open.spotify.com/{segment}/{item_id}",
                 )
+
+    return None
+
+
+def parse_youtube_playlist_reference(query: str) -> YouTubePlaylistReference | None:
+    """Return the first YouTube URL that includes a playlist list ID."""
+    for token in query.split():
+        reference = parse_youtube_playlist_candidate(token)
+        if reference:
+            return reference
+    return None
+
+
+def parse_youtube_playlist_candidate(value: str) -> YouTubePlaylistReference | None:
+    candidate = value.strip().strip("<>()[]{}.,")
+    if not candidate:
+        return None
+
+    parsed = urlparse(candidate)
+    host = parsed.netloc.lower()
+    if host.startswith("www."):
+        normalized_host = host[4:]
+    else:
+        normalized_host = host
+
+    if (
+        host not in YOUTUBE_PLAYLIST_HOSTS
+        and normalized_host not in YOUTUBE_PLAYLIST_HOSTS
+    ):
+        return None
+
+    playlist_id = parse_qs(parsed.query).get("list", [None])[0]
+    if not playlist_id:
+        return None
+
+    return YouTubePlaylistReference(url=candidate, playlist_id=playlist_id)
+
+
+def youtube_playlist_entry_url(entry: dict[str, Any]) -> str | None:
+    """Turn a flat yt-dlp playlist entry into a watch URL."""
+    webpage_url = entry.get("webpage_url")
+    if isinstance(webpage_url, str) and webpage_url.startswith("http"):
+        return webpage_url
+
+    url = entry.get("url")
+    if isinstance(url, str) and url.startswith("http"):
+        return url
+
+    video_id = entry.get("id") or url
+    if isinstance(video_id, str) and video_id:
+        return f"https://www.youtube.com/watch?v={video_id}"
 
     return None
 
@@ -1387,6 +1471,48 @@ class Music(commands.Cog, name="Music"):
                 return None
             raise
 
+    async def resolve_youtube_playlist(
+        self,
+        reference: YouTubePlaylistReference,
+    ) -> YouTubePlaylistSelection:
+        loop = asyncio.get_running_loop()
+        info = await loop.run_in_executor(
+            None,
+            partial(playlist_ytdl.extract_info, reference.url, download=False),
+        )
+
+        if info is None:
+            raise commands.CommandError("I couldn't load that YouTube playlist.")
+
+        entries = [
+            entry
+            for entry in info.get("entries", [])
+            if isinstance(entry, dict) and youtube_playlist_entry_url(entry)
+        ]
+        if not entries:
+            raise commands.CommandError(
+                "That YouTube playlist did not contain any playable videos."
+            )
+
+        total = (
+            info.get("playlist_count")
+            or info.get("n_entries")
+            or len(entries)
+        )
+        if not isinstance(total, int):
+            total = len(entries)
+
+        title = info.get("title") or "YouTube playlist"
+        limited = total > len(entries)
+
+        return YouTubePlaylistSelection(
+            reference=reference,
+            title=title,
+            entries=entries,
+            total=total,
+            limited=limited,
+        )
+
     async def extract_track(
         self,
         query: str,
@@ -1463,6 +1589,115 @@ class Music(commands.Cog, name="Music"):
             webpage_url=spotify_track.spotify_url,
             duration=spotify_track.duration,
             thumbnail_url=spotify_track.thumbnail_url,
+        )
+
+    async def queue_youtube_playlist_selection(
+        self,
+        ctx: commands.Context,
+        voice: discord.VoiceClient,
+        selection: YouTubePlaylistSelection,
+    ):
+        state = self.get_state(ctx.guild.id)
+        if state.announce_channel_id != ctx.channel.id:
+            await self.deactivate_player_message(state)
+        state.announce_channel_id = ctx.channel.id
+        was_busy = (
+            voice.is_playing()
+            or voice.is_paused()
+            or state.now_playing is not None
+            or not state.queue.empty()
+        )
+
+        description = (
+            f"Loading **{len(selection.entries)}** YouTube track(s) from "
+            f"**{selection.title}**..."
+        )
+        if selection.limited:
+            description += (
+                f"\nOnly the first **{YOUTUBE_TRACK_LIMIT}** YouTube items "
+                "will be loaded."
+            )
+        loading_message = await ctx.send(
+            embed=discord.Embed(description=description, color=COLOR_INFO)
+        )
+
+        added = 0
+        failed = 0
+        first_track: Track | None = None
+
+        for entry in selection.entries:
+            entry_url = youtube_playlist_entry_url(entry)
+            if not entry_url:
+                failed += 1
+                continue
+
+            try:
+                track = await self.extract_track(
+                    entry_url,
+                    ctx.author.id,
+                    display_title=entry.get("title") or None,
+                    webpage_url=entry_url,
+                    duration=entry.get("duration"),
+                    thumbnail_url=entry.get("thumbnail"),
+                )
+            except Exception as exc:
+                failed += 1
+                log.warning(
+                    "Could not resolve YouTube playlist entry %s: %s",
+                    entry_url,
+                    exc,
+                )
+                continue
+
+            await state.queue.put(track)
+            first_track = first_track or track
+            added += 1
+
+            if added == 1:
+                await self.start_player(ctx.guild)
+
+        if added == 0:
+            return await loading_message.edit(
+                embed=discord.Embed(
+                    description=(
+                        "I found that YouTube playlist, but couldn't load any "
+                        "playable videos from it."
+                    ),
+                    color=COLOR_ERROR,
+                )
+            )
+
+        if added == 1 and first_track:
+            if not was_busy:
+                return await loading_message.edit(
+                    embed=discord.Embed(
+                        description=(
+                            f"Loaded YouTube playlist track "
+                            f"[{first_track.title}]({first_track.webpage_url})."
+                        ),
+                        color=COLOR_INFO,
+                    )
+                )
+            description = (
+                f"Queued YouTube playlist track "
+                f"[{first_track.title}]({first_track.webpage_url})."
+            )
+        else:
+            description = (
+                f"Queued **{added}** track(s) from YouTube playlist "
+                f"**{selection.title}**."
+            )
+
+        if failed:
+            description += f"\nSkipped **{failed}** video(s) that could not be loaded."
+        if selection.limited:
+            description += (
+                f"\nLoaded **{len(selection.entries)}** of "
+                f"**{selection.total}** YouTube item(s)."
+            )
+
+        await loading_message.edit(
+            embed=discord.Embed(description=description, color=COLOR_INFO)
         )
 
     async def queue_spotify_selection(
@@ -1756,6 +1991,36 @@ class Music(commands.Cog, name="Music"):
                 return await ctx.send(
                     embed=discord.Embed(
                         description=f"Failed to load that Spotify link: {exc}",
+                        color=COLOR_ERROR,
+                    )
+                )
+
+        youtube_playlist_reference = parse_youtube_playlist_reference(query)
+        if youtube_playlist_reference:
+            try:
+                selection = await self.resolve_youtube_playlist(
+                    youtube_playlist_reference
+                )
+                return await self.queue_youtube_playlist_selection(
+                    ctx,
+                    voice,
+                    selection,
+                )
+            except commands.CommandError as exc:
+                return await ctx.send(
+                    embed=discord.Embed(
+                        description=str(exc),
+                        color=COLOR_ERROR,
+                    )
+                )
+            except Exception as exc:
+                log.exception(
+                    "Failed to load YouTube playlist %s",
+                    youtube_playlist_reference.url,
+                )
+                return await ctx.send(
+                    embed=discord.Embed(
+                        description=f"Failed to load that YouTube playlist: {exc}",
                         color=COLOR_ERROR,
                     )
                 )

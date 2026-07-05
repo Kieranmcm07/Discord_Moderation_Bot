@@ -254,6 +254,7 @@ SPOTIFY_CLIENT_ID=
 SPOTIFY_CLIENT_SECRET=
 SPOTIFY_MAX_TRACKS=50
 SPOTIFY_MARKET=US
+YOUTUBE_MAX_TRACKS=50
 BOT_FAILURE_MODE=retry
 BOT_RETRY_DELAY_SECONDS=5
 ```
@@ -285,6 +286,7 @@ SPOTIFY_CLIENT_ID=your_client_id
 SPOTIFY_CLIENT_SECRET=your_client_secret
 SPOTIFY_MAX_TRACKS=50
 SPOTIFY_MARKET=US
+YOUTUBE_MAX_TRACKS=50
 ```
 
 Supported inputs:
@@ -300,6 +302,10 @@ flow. `SPOTIFY_MAX_TRACKS` caps album and playlist expansion between 1 and 100
 tracks so a very large playlist does not lock up the music command.
 `SPOTIFY_MARKET` controls the country used for Spotify availability checks;
 use `GB` instead of `US` if you want UK availability.
+
+YouTube playlist URLs also work with `,play`. `YOUTUBE_MAX_TRACKS` caps YouTube
+playlist expansion between 1 and 100 videos so very large playlists do not lock
+up the music command.
 
 ## Windows Helper Scripts
 
@@ -331,6 +337,7 @@ Environment values are loaded from `.env`.
 | `DB_PATH` | SQLite database path, default `data/bot.db` |
 | `BOT_FAILURE_MODE` | `retry` to restart after unexpected failures, or `close` to exit |
 | `BOT_RETRY_DELAY_SECONDS` | Seconds to wait before retrying, default `5` |
+| `YOUTUBE_MAX_TRACKS` | Maximum YouTube playlist videos to load, capped from `1` to `100` |
 | `MOD_LOG_CHANNEL_ID` | Optional fallback moderation log channel |
 | `INVITE_LOG_CHANNEL_ID` | Optional invite log channel |
 | `JOIN_LOG_CHANNEL_ID` | Optional join and leave log channel |
@@ -516,7 +523,7 @@ The default prefix in this README is `,`. Change it with `PREFIX` in `.env`.
 | Command | Description |
 | --- | --- |
 | `,join` | Join your current voice channel |
-| `,play <url, search, or Spotify link>` | Play audio from a URL, search term, Spotify track, Spotify album, or Spotify playlist |
+| `,play <url, search, Spotify, or YouTube playlist>` | Play audio from a URL, search term, Spotify link, or YouTube playlist |
 | `,queue` | Show the queue |
 | `,controls` | Show interactive music controls |
 | `,skip` | Skip the current track |

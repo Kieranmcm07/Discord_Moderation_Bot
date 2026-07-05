@@ -12,6 +12,7 @@ from cogs.invite_logger import invite_uses
 from cogs.moderation import build_chatlog_text, parse_duration
 from cogs.music import parse_spotify_reference, spotify_track_from_payload
 from cogs.music import spotify_playlist_total_from_html, spotify_track_ids_from_html
+from cogs.music import parse_youtube_playlist_reference, youtube_playlist_entry_url
 from cogs.reminders import parse_duration_prefix
 from utils.embeds import decorate_embed
 from utils.time import parse_db_timestamp, unix_timestamp
@@ -182,6 +183,37 @@ class SpotifyParsingTests(unittest.TestCase):
         html = '<meta name="description" content="Playlist &middot; General &middot; 154 items"/>'
 
         self.assertEqual(spotify_playlist_total_from_html(html), 154)
+
+
+class YouTubePlaylistParsingTests(unittest.TestCase):
+    def test_parse_youtube_playlist_url(self):
+        reference = parse_youtube_playlist_reference(
+            "https://www.youtube.com/playlist?list=PL123abc"
+        )
+
+        self.assertIsNotNone(reference)
+        self.assertEqual(reference.playlist_id, "PL123abc")
+
+    def test_parse_youtube_watch_url_with_playlist(self):
+        reference = parse_youtube_playlist_reference(
+            "https://www.youtube.com/watch?v=abc123&list=PL456def"
+        )
+
+        self.assertIsNotNone(reference)
+        self.assertEqual(reference.playlist_id, "PL456def")
+
+    def test_reject_single_youtube_video_without_playlist(self):
+        self.assertIsNone(
+            parse_youtube_playlist_reference(
+                "https://www.youtube.com/watch?v=abc123"
+            )
+        )
+
+    def test_flat_youtube_entry_becomes_watch_url(self):
+        self.assertEqual(
+            youtube_playlist_entry_url({"id": "abc123", "url": "abc123"}),
+            "https://www.youtube.com/watch?v=abc123",
+        )
 
 
 if __name__ == "__main__":
