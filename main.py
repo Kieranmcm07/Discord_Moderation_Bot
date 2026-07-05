@@ -440,10 +440,6 @@ class MyBot(commands.Bot):
             self.watch_stop_requests(),
             name="stop-request-watcher",
         )
-        self._presence_task = asyncio.create_task(
-            self.rotate_presence(),
-            name="presence-rotation",
-        )
 
     async def get_context(self, origin, /, *, cls=commands.Context):
         """Always return our branded context subclass."""
@@ -497,14 +493,15 @@ class MyBot(commands.Bot):
         guild_count = len(self.guilds)
         server_word = "server" if guild_count == 1 else "servers"
         return [
+            discord.CustomActivity(name=f"🛡️ Guarding {guild_count} {server_word}"),
+            discord.Game(name=f"Nokturnal Guard {BOT_VERSION}"),
             discord.Activity(
                 type=discord.ActivityType.watching,
                 name=f"{guild_count} {server_word} | {PREFIX}help",
             ),
-            discord.Game(name=f"Nokturnal Guard {BOT_VERSION}"),
             discord.Activity(
                 type=discord.ActivityType.listening,
-                name=f"{PREFIX}play Spotify links",
+                name=f"{PREFIX}play Spotify + YouTube",
             ),
             discord.Activity(
                 type=discord.ActivityType.watching,
@@ -515,6 +512,30 @@ class MyBot(commands.Bot):
                 name=f"startup #{STARTUP_COUNT}",
             ),
         ]
+
+    def presence_log_text(self, activity: discord.Activity) -> str:
+        """Return a compact readable version of a Discord activity."""
+        activity_name = getattr(activity, "name", "unknown")
+        activity_type = getattr(activity, "type", None)
+        if activity_type == discord.ActivityType.playing:
+            return f"Playing {activity_name}"
+        if activity_type == discord.ActivityType.listening:
+            return f"Listening to {activity_name}"
+        if activity_type == discord.ActivityType.watching:
+            return f"Watching {activity_name}"
+        if activity_type == discord.ActivityType.custom:
+            return f"Custom status {activity_name}"
+        return str(activity_name)
+
+    def ensure_presence_task(self):
+        """Start or restart the public status rotation."""
+        if self._presence_task and not self._presence_task.done():
+            return
+
+        self._presence_task = asyncio.create_task(
+            self.rotate_presence(),
+            name="presence-rotation",
+        )
 
     async def rotate_presence(self):
         """Rotate the public Discord presence while the bot is online."""
@@ -528,6 +549,10 @@ class MyBot(commands.Bot):
                     await self.change_presence(
                         status=discord.Status.online,
                         activity=activity,
+                    )
+                    log.info(
+                        "Updated bot presence: %s",
+                        self.presence_log_text(activity),
                     )
                 except discord.HTTPException:
                     log.exception("Discord rejected a presence update")
@@ -571,6 +596,7 @@ class MyBot(commands.Bot):
                 f"(startup #{STARTUP_COUNT})"
             ),
         )
+        self.ensure_presence_task()
 
     async def on_error(self, event_method: str, *args, **kwargs):
         """Log listener/background event crashes with searchable error IDs."""
