@@ -493,7 +493,6 @@ class MyBot(commands.Bot):
         guild_count = len(self.guilds)
         server_word = "server" if guild_count == 1 else "servers"
         return [
-            discord.CustomActivity(name=f"🛡️ Guarding {guild_count} {server_word}"),
             discord.Game(name=f"Nokturnal Guard {BOT_VERSION}"),
             discord.Activity(
                 type=discord.ActivityType.watching,
@@ -523,8 +522,6 @@ class MyBot(commands.Bot):
             return f"Listening to {activity_name}"
         if activity_type == discord.ActivityType.watching:
             return f"Watching {activity_name}"
-        if activity_type == discord.ActivityType.custom:
-            return f"Custom status {activity_name}"
         return str(activity_name)
 
     def ensure_presence_task(self):
