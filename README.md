@@ -6,7 +6,7 @@
 -->
 
 <p align="center">
-  <img src="docs/assets/readme-banner.svg" alt="Discord Moderation Bot banner" width="100%">
+  <img src="docs/assets/readme-banner.png" alt="Discord Moderation Bot banner" width="100%">
 </p>
 
 <h1 align="center">Discord Moderation Bot</h1>
