@@ -41,7 +41,7 @@ def resolve_mod_log_channel_id(settings: dict | None = None) -> int:
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 PREFIX = os.getenv("PREFIX", ",")
 BOT_VERSION = os.getenv("BOT_VERSION", "v1.2.0").strip() or "v1.2.0"
-PRESENCE_ROTATION_SECONDS = max(30, parse_int_env("PRESENCE_ROTATION_SECONDS", 45))
+PRESENCE_ROTATION_SECONDS = max(10, parse_int_env("PRESENCE_ROTATION_SECONDS", 10))
 OWNER_IDS = [
     int(value)
     for value in os.getenv("OWNER_IDS", "").split(",")
