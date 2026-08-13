@@ -41,12 +41,20 @@ from config import (
 from utils.errors import SafeView
 
 YTDL_FORMAT_OPTIONS = {
-    "format": "bestaudio/best",
+    # YouTube format 18 is progressive (audio and video in one HTTP stream),
+    # avoiding the intermittently forbidden DASH audio URLs seen from Music.
+    # Other extractors, and videos without format 18, use the normal fallbacks.
+    "format": "18/bestaudio/best",
     "noplaylist": True,
     "quiet": True,
     "no_warnings": True,
     "default_search": "ytsearch1",
     "source_address": "0.0.0.0",
+    # The default Android VR client can return signed DASH URLs that
+    # intermittently fail with HTTP 403 when FFmpeg opens them. The regular
+    # Android client exposes a progressive stream that is much more reliable
+    # for voice playback, including music.youtube.com links.
+    "extractor_args": {"youtube": {"player_client": ["android"]}},
 }
 
 YTDL_PLAYLIST_OPTIONS = {
@@ -56,12 +64,20 @@ YTDL_PLAYLIST_OPTIONS = {
 }
 
 FFMPEG_OPTIONS = {
-    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+    # yt-dlp is deliberately bound to IPv4 above. Keep FFmpeg on the same
+    # address family so YouTube's IP-bound signed URL remains valid.
+    "before_options": (
+        "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
+        "-local_addr 0.0.0.0"
+    ),
     "options": "-vn",
 }
 
 IDLE_DISCONNECT_SECONDS = 180
 VOICE_CONNECT_TIMEOUT = 20.0
+PLAYBACK_RETRY_LIMIT = 1
+PLAYBACK_STABLE_SECONDS = 5.0
+AUDIO_FRAME_SECONDS = 0.02
 SPOTIFY_API_BASE_URL = "https://api.spotify.com/v1"
 SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_SUPPORTED_TYPES = {"track", "album", "playlist"}
@@ -172,6 +188,57 @@ class Track:
         if hours:
             return f"{hours}:{minutes:02}:{seconds:02}"
         return f"{minutes}:{seconds:02}"
+
+
+class MusicPCMVolumeTransformer(discord.PCMVolumeTransformer):
+    """Volume control that preserves FFmpeg errors and detects early EOF."""
+
+    def __init__(
+        self,
+        original: discord.AudioSource,
+        *,
+        volume: float,
+        expected_duration: int | float | None,
+    ):
+        super().__init__(original, volume=volume)
+        self.expected_duration = expected_duration
+        self.frames_read = 0
+        self._playback_error: Exception | None = None
+
+    @property
+    def _current_error(self) -> Exception | None:
+        return self._playback_error or getattr(
+            self.original,
+            "_current_error",
+            None,
+        )
+
+    def read(self) -> bytes:
+        data = super().read()
+        if data:
+            self.frames_read += 1
+            return data
+
+        original_error = getattr(self.original, "_current_error", None)
+        if original_error:
+            self._playback_error = original_error
+            return data
+
+        played_seconds = self.frames_read * AUDIO_FRAME_SECONDS
+        ended_before_audio = self.frames_read == 0
+        ended_during_startup = (
+            played_seconds < PLAYBACK_STABLE_SECONDS
+            and (
+                not isinstance(self.expected_duration, (int, float))
+                or self.expected_duration > PLAYBACK_STABLE_SECONDS
+            )
+        )
+        if ended_before_audio or ended_during_startup:
+            self._playback_error = RuntimeError(
+                "The audio stream ended before the track was complete."
+            )
+
+        return data
 
 
 @dataclass(frozen=True)
@@ -1046,7 +1113,11 @@ class Music(commands.Cog, name="Music"):
             track.stream_url,
             **self.make_ffmpeg_options(track, state),
         )
-        return discord.PCMVolumeTransformer(source, volume=state.volume)
+        return MusicPCMVolumeTransformer(
+            source,
+            volume=state.volume,
+            expected_duration=track.duration,
+        )
 
     def clear_queue(self, state: GuildMusicState) -> int:
         removed = 0
@@ -1828,6 +1899,7 @@ class Music(commands.Cog, name="Music"):
                     return
 
                 refresh_before_play = False
+                playback_retry_count = 0
                 while True:
                     voice = await self.get_healthy_voice(guild)
 
@@ -1847,6 +1919,15 @@ class Music(commands.Cog, name="Music"):
                                 guild.id,
                                 track.webpage_url,
                             )
+                            await self.archive_player_message(
+                                guild,
+                                state,
+                                track,
+                                title="Playback Failed",
+                                status="Could not refresh stream",
+                                icon="⚠️",
+                                color=COLOR_ERROR,
+                            )
                             state.now_playing = None
                             state.restart_requested = False
                             state.skip_requested = False
@@ -1861,7 +1942,11 @@ class Music(commands.Cog, name="Music"):
                     state.stop_requested = False
                     finished = asyncio.Event()
 
+                    playback_error: Exception | None = None
+
                     def after_playback(error: Exception | None):
+                        nonlocal playback_error
+                        playback_error = error
                         if error:
                             log.warning(
                                 "Music playback error in guild %s: %s",
@@ -1904,10 +1989,42 @@ class Music(commands.Cog, name="Music"):
                             color=COLOR_INFO,
                         )
                         state.restart_requested = False
+                        playback_retry_count = 0
                         refresh_before_play = True
                         continue
 
-                    if state.loop_enabled and not state.skip_requested:
+                    if (
+                        playback_error
+                        and not state.skip_requested
+                        and not state.stop_requested
+                    ):
+                        if playback_retry_count < PLAYBACK_RETRY_LIMIT:
+                            playback_retry_count += 1
+                            log.warning(
+                                "Refreshing failed music stream in guild %s for %s "
+                                "(retry %s/%s).",
+                                guild.id,
+                                track.webpage_url,
+                                playback_retry_count,
+                                PLAYBACK_RETRY_LIMIT,
+                            )
+                            await self.archive_player_message(
+                                guild,
+                                state,
+                                track,
+                                title="Retrying Track",
+                                status="Refreshing failed stream",
+                                icon="🔄",
+                                color=COLOR_INFO,
+                            )
+                            refresh_before_play = True
+                            continue
+
+                    if (
+                        state.loop_enabled
+                        and not state.skip_requested
+                        and playback_error is None
+                    ):
                         await self.archive_player_message(
                             guild,
                             state,
@@ -1917,6 +2034,7 @@ class Music(commands.Cog, name="Music"):
                             icon="🔁",
                             color=COLOR_INFO,
                         )
+                        playback_retry_count = 0
                         refresh_before_play = True
                         continue
 
@@ -1924,14 +2042,22 @@ class Music(commands.Cog, name="Music"):
                         archive_title = "Playback Stopped"
                         archive_status = "Stopped • not playing"
                         archive_icon = "⏹️"
+                        archive_color = COLOR_INFO
                     elif state.skip_requested:
                         archive_title = "Track Skipped"
                         archive_status = "Skipped • not playing"
                         archive_icon = "⏭️"
+                        archive_color = COLOR_INFO
+                    elif playback_error:
+                        archive_title = "Playback Failed"
+                        archive_status = "Stream failed • not playing"
+                        archive_icon = "⚠️"
+                        archive_color = COLOR_ERROR
                     else:
                         archive_title = "Track Finished"
                         archive_status = "Ended • not playing"
                         archive_icon = "✅"
+                        archive_color = COLOR_INFO
 
                     await self.archive_player_message(
                         guild,
@@ -1940,7 +2066,7 @@ class Music(commands.Cog, name="Music"):
                         title=archive_title,
                         status=archive_status,
                         icon=archive_icon,
-                        color=COLOR_INFO,
+                        color=archive_color,
                     )
                     state.now_playing = None
                     state.skip_requested = False

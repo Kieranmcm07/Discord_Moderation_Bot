@@ -10,9 +10,17 @@ import discord
 
 from cogs.invite_logger import invite_uses
 from cogs.moderation import build_chatlog_text, parse_duration
-from cogs.music import parse_spotify_reference, spotify_track_from_payload
-from cogs.music import spotify_playlist_total_from_html, spotify_track_ids_from_html
-from cogs.music import parse_youtube_playlist_reference, youtube_playlist_entry_url
+from cogs.music import (
+    FFMPEG_OPTIONS,
+    YTDL_FORMAT_OPTIONS,
+    MusicPCMVolumeTransformer,
+    parse_spotify_reference,
+    parse_youtube_playlist_reference,
+    spotify_playlist_total_from_html,
+    spotify_track_from_payload,
+    spotify_track_ids_from_html,
+    youtube_playlist_entry_url,
+)
 from cogs.reminders import parse_duration_prefix
 from utils.embeds import decorate_embed
 from utils.time import parse_db_timestamp, unix_timestamp
@@ -34,6 +42,20 @@ class FakeAvatar:
 class FakeBotUser:
     name = "Test Bot"
     display_avatar = FakeAvatar()
+
+
+class FakePCMSource(discord.AudioSource):
+    def __init__(self, frames=None, error=None):
+        self.frames = list(frames or [])
+        self._current_error = error
+
+    def read(self):
+        if self.frames:
+            return self.frames.pop(0)
+        return b""
+
+    def is_opus(self):
+        return False
 
 
 class TimeHelperTests(unittest.TestCase):
@@ -214,6 +236,64 @@ class YouTubePlaylistParsingTests(unittest.TestCase):
             youtube_playlist_entry_url({"id": "abc123", "url": "abc123"}),
             "https://www.youtube.com/watch?v=abc123",
         )
+
+
+class YouTubePlaybackRegressionTests(unittest.TestCase):
+    def test_youtube_uses_reliable_android_player_client(self):
+        self.assertEqual(
+            YTDL_FORMAT_OPTIONS["extractor_args"]["youtube"]["player_client"],
+            ["android"],
+        )
+        self.assertEqual(YTDL_FORMAT_OPTIONS["format"], "18/bestaudio/best")
+
+    def test_ffmpeg_uses_same_ipv4_family_as_extractor(self):
+        self.assertIn("-local_addr 0.0.0.0", FFMPEG_OPTIONS["before_options"])
+
+    def test_empty_audio_stream_is_reported_as_playback_error(self):
+        source = MusicPCMVolumeTransformer(
+            FakePCMSource(),
+            volume=1.0,
+            expected_duration=190,
+        )
+
+        self.assertEqual(source.read(), b"")
+        self.assertIsInstance(source._current_error, RuntimeError)
+
+    def test_wrapped_ffmpeg_error_is_preserved(self):
+        expected_error = RuntimeError("HTTP 403 Forbidden")
+        source = MusicPCMVolumeTransformer(
+            FakePCMSource(error=expected_error),
+            volume=1.0,
+            expected_duration=190,
+        )
+
+        self.assertEqual(source.read(), b"")
+        self.assertIs(source._current_error, expected_error)
+
+    def test_normal_end_does_not_create_playback_error(self):
+        frame = b"\x00\x00" * 20
+        source = MusicPCMVolumeTransformer(
+            FakePCMSource([frame]),
+            volume=1.0,
+            expected_duration=0.02,
+        )
+
+        self.assertEqual(source.read(), frame)
+        self.assertEqual(source.read(), b"")
+        self.assertIsNone(source._current_error)
+
+    def test_end_after_startup_is_not_compared_to_full_track_duration(self):
+        frame = b"\x00\x00" * 20
+        source = MusicPCMVolumeTransformer(
+            FakePCMSource([frame] * 250),
+            volume=1.0,
+            expected_duration=190,
+        )
+
+        for _ in range(250):
+            self.assertEqual(source.read(), frame)
+        self.assertEqual(source.read(), b"")
+        self.assertIsNone(source._current_error)
 
 
 if __name__ == "__main__":

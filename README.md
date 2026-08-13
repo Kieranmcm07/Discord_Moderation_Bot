@@ -27,7 +27,7 @@
     <img alt="MIT license" src="https://img.shields.io/github/license/Kieranmcm07/Discord_Moderation_Bot?style=for-the-badge&color=2ea043">
   </a>
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white">
-  <img alt="discord.py 2.3+" src="https://img.shields.io/badge/discord.py-2.3%2B-5865F2?style=for-the-badge&logo=discord&logoColor=white">
+  <img alt="discord.py 2.7+" src="https://img.shields.io/badge/discord.py-2.7%2B-5865F2?style=for-the-badge&logo=discord&logoColor=white">
   <img alt="SQLite storage" src="https://img.shields.io/badge/SQLite-local-044A64?style=for-the-badge&logo=sqlite&logoColor=white">
 </p>
 
