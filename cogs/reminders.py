@@ -9,7 +9,6 @@ Reminders are stored in SQLite so they survive restarts, then delivered by a
 small background loop when they become due.
 """
 
-# Useful for staff follow-ups that would otherwise get forgotten.
 import logging
 import re
 from datetime import timedelta
@@ -145,6 +144,7 @@ class Reminders(commands.Cog, name="Reminders"):
             except Exception:
                 log.exception("Failed to deliver reminder %s", reminder["id"])
                 continue
+            # Delivery errors above leave the row in place for the next pass.
             await delete_reminder(reminder["guild_id"], reminder["id"])
 
     @reminder_loop.before_loop

@@ -10,9 +10,7 @@ It is intentionally local and explainable: no external AI API, no hidden model,
 just transparent signals staff can act on.
 """
 
-# This is not magic moderation, just explainable pattern checks.
 import json
-import logging
 import re
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
@@ -26,19 +24,16 @@ from config import (
     COLOR_SUCCESS,
     COLOR_WARN,
     PREFIX,
-    resolve_mod_log_channel_id,
 )
 from utils.db import (
     add_sentinel_incident,
-    get_guild_settings,
     get_recent_sentinel_incidents,
     get_sentinel_settings,
     upsert_sentinel_settings,
 )
 from utils.embeds import make_embed
+from utils.moderation import send_mod_log
 from utils.time import unix_timestamp
-
-log = logging.getLogger(__name__)
 
 
 LINK_PATTERN = re.compile(
@@ -133,31 +128,6 @@ class Sentinel(commands.Cog, name="Sentinel"):
 
         return clamp(score, 0, 100), reasons
 
-    async def send_sentinel_log(
-        self,
-        guild: discord.Guild,
-        embed: discord.Embed,
-        preferred_channel_id: int | None,
-    ):
-        channel = (
-            guild.get_channel(preferred_channel_id) if preferred_channel_id else None
-        )
-
-        if channel is None:
-            guild_settings = await get_guild_settings(guild.id) or {}
-            mod_log_id = resolve_mod_log_channel_id(guild_settings)
-            channel = guild.get_channel(mod_log_id) if mod_log_id else None
-
-        if channel:
-            try:
-                await channel.send(embed=embed)
-            except (discord.Forbidden, discord.HTTPException):
-                log.warning(
-                    "Could not send Sentinel log in guild %s.",
-                    guild.id,
-                    exc_info=True,
-                )
-
     async def create_message_incident(
         self,
         message: discord.Message,
@@ -171,6 +141,7 @@ class Sentinel(commands.Cog, name="Sentinel"):
         if cooldown_until and cooldown_until > now:
             return
 
+        # One burst should produce one alert instead of a new incident for every message.
         self.alert_cooldowns[key] = now + timedelta(minutes=3)
         incident_id = await add_sentinel_incident(
             message.guild.id,
@@ -229,7 +200,7 @@ class Sentinel(commands.Cog, name="Sentinel"):
                     inline=False,
                 )
 
-        await self.send_sentinel_log(
+        await send_mod_log(
             message.guild,
             embed,
             settings.get("log_channel_id"),
@@ -301,7 +272,7 @@ class Sentinel(commands.Cog, name="Sentinel"):
             value=f"Use `{PREFIX}lock` on busy public channels if the wave continues.",
             inline=False,
         )
-        await self.send_sentinel_log(
+        await send_mod_log(
             member.guild, embed, settings.get("log_channel_id")
         )
 

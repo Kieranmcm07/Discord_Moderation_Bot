@@ -626,7 +626,7 @@ class MusicControlView(SafeView):
         )
 
     @discord.ui.button(label="Stop", emoji="⏹️", style=discord.ButtonStyle.danger)
-    async def stop(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def stop_playback(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice = await self.get_voice(interaction)
         if not voice:
             return
@@ -1953,6 +1953,7 @@ class Music(commands.Cog, name="Music"):
                                 guild.id,
                                 error,
                             )
+                        # Discord calls this from its audio thread, outside the asyncio loop.
                         self.bot.loop.call_soon_threadsafe(finished.set)
 
                     try:
@@ -2383,18 +2384,15 @@ class Music(commands.Cog, name="Music"):
             )
         )
 
-    @commands.command(name="nowplaying", aliases=["np"], help="Show the current track.")
+    @commands.command(
+        name="nowplaying",
+        aliases=["np", "controls", "musicpanel", "player"],
+        help="Show the current track and interactive player controls.",
+    )
     async def now_playing(self, ctx):
         """Usage: ,nowplaying"""
         state = self.get_state(ctx.guild.id)
-        if not state.now_playing:
-            return await ctx.send(
-                embed=discord.Embed(
-                    description="Nothing is playing right now.",
-                    color=COLOR_INFO,
-                )
-            )
-
+        # Retire the old panel so only the latest message has working controls.
         state.announce_channel_id = ctx.channel.id
         await self.deactivate_player_message(state)
         state.player_message = await ctx.send(
@@ -2652,22 +2650,6 @@ class Music(commands.Cog, name="Music"):
                 color=COLOR_SUCCESS,
             )
         )
-
-    @commands.command(
-        name="controls",
-        aliases=["musicpanel", "player"],
-        help="Show interactive music controls.",
-    )
-    async def controls(self, ctx):
-        """Usage: ,controls"""
-        state = self.get_state(ctx.guild.id)
-        state.announce_channel_id = ctx.channel.id
-        await self.deactivate_player_message(state)
-        state.player_message = await ctx.send(
-            embed=self.build_player_embed(ctx.guild, state),
-            view=MusicControlView(self, ctx.guild.id),
-        )
-
 
 async def setup(bot):
     await bot.add_cog(Music(bot))

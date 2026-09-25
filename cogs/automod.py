@@ -7,7 +7,6 @@ cogs/automod.py - persistent server-level message filtering.
 """
 
 # AutoMod handles deterministic rules; Sentinel handles live behaviour patterns.
-import logging
 import re
 from datetime import datetime
 
@@ -21,20 +20,17 @@ from config import (
     COLOR_SUCCESS,
     COLOR_WARN,
     PREFIX,
-    resolve_mod_log_channel_id,
 )
 from utils.db import (
     add_case,
     add_automod_blocked_term,
     get_automod_blocked_terms,
     get_automod_settings,
-    get_guild_settings,
     remove_automod_blocked_term,
     upsert_automod_settings,
 )
 from utils.embeds import make_embed
-
-log = logging.getLogger(__name__)
+from utils.moderation import send_mod_log
 
 INVITE_PATTERN = re.compile(
     r"(discord(?:app)?\.com/invite/\S+|discord\.gg/\S+)",
@@ -64,6 +60,7 @@ class AutoMod(commands.Cog, name="AutoMod"):
         self._term_cache: dict[int, list[str]] = {}
 
     async def blocked_terms(self, guild_id: int) -> list[str]:
+        # Avoid loading the word list for every message; edit commands clear this cache.
         if guild_id not in self._term_cache:
             rows = await get_automod_blocked_terms(guild_id)
             self._term_cache[guild_id] = [row["term"] for row in rows]
@@ -71,20 +68,6 @@ class AutoMod(commands.Cog, name="AutoMod"):
 
     def clear_term_cache(self, guild_id: int):
         self._term_cache.pop(guild_id, None)
-
-    async def send_mod_log(self, guild: discord.Guild, embed: discord.Embed):
-        settings = await get_guild_settings(guild.id) or {}
-        channel_id = resolve_mod_log_channel_id(settings)
-        channel = guild.get_channel(channel_id) if channel_id else None
-        if channel:
-            try:
-                await channel.send(embed=embed)
-            except (discord.Forbidden, discord.HTTPException):
-                log.warning(
-                    "Could not send AutoMod log in guild %s.",
-                    guild.id,
-                    exc_info=True,
-                )
 
     def detect_triggers(
         self,
@@ -147,7 +130,7 @@ class AutoMod(commands.Cog, name="AutoMod"):
                 content = f"{content[:697]}..."
             embed.add_field(name="Message", value=content, inline=False)
 
-        await self.send_mod_log(message.guild, embed)
+        await send_mod_log(message.guild, embed)
 
         try:
             warning = (

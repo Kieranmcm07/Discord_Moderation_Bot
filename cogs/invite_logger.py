@@ -9,7 +9,6 @@ This cog gives moderators a quick picture of where members came from and whether
 an account looks brand new or more established.
 """
 
-# This is handy when staff need context around new joins.
 import logging
 
 import discord
@@ -84,6 +83,7 @@ class InviteLogger(commands.Cog, name="Invite Logger"):
             log.warning("Could not read invites for guild %s.", guild.id, exc_info=True)
             current_invites = []
 
+        # Discord does not report the invite on the join event. Increased use counts are a best guess.
         for invite in current_invites:
             old_uses = old_counts.get(invite.code, 0)
             if invite_uses(invite) > old_uses:

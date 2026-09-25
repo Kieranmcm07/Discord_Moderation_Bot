@@ -78,6 +78,7 @@ async def make_feedback_embed(
             color=color,
         )
     except Exception:
+        # An error reply still needs to work when the branding database is down.
         log.exception("Failed to build branded error embed")
         return discord.Embed(title=title, description=description, color=color)
 

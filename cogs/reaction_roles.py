@@ -93,6 +93,7 @@ class ReactionRoles(commands.Cog, name="Reaction Roles"):
                 ephemeral=True,
             )
 
+        # Old panel messages can outlive a removed setting. Check again on every click.
         configured_role_ids = {
             entry["role_id"] for entry in await get_reaction_roles(interaction.guild.id)
         }

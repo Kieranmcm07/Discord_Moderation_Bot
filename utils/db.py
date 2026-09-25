@@ -9,7 +9,6 @@ SQLite is a good fit for this project because it keeps setup simple while still
 handling the bot's moderation, ticket, and analytics data cleanly.
 """
 
-# Database helpers are kept async so commands do not block the bot.
 import os
 
 import aiosqlite
@@ -53,6 +52,7 @@ async def init_db():
         os.makedirs(db_directory, exist_ok=True)
 
     async with connect_db() as db:
+        # Readers can keep working while another command writes to the database.
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute(f"PRAGMA busy_timeout={int(DB_TIMEOUT_SECONDS * 1000)}")
 

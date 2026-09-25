@@ -9,7 +9,6 @@ Cases are one of the most useful moderation tools in the bot, so these
 commands aim to stay quick to scan during busy moderation sessions.
 """
 
-# Case history is the paper trail for staff actions.
 import csv
 import io
 
@@ -27,33 +26,13 @@ from utils.db import (
     update_case_reason,
 )
 from utils.embeds import make_embed
+from utils.moderation import get_action_label
 from utils.time import parse_db_timestamp, unix_timestamp
-
-ACTION_LABELS = {
-    "ban": "Ban",
-    "softban": "Softban",
-    "unban": "Unban",
-    "kick": "Kick",
-    "tempban": "Temporary Ban",
-    "warn": "Warning",
-    "note": "Moderator Note",
-    "clearwarns": "Warnings Cleared",
-    "timeout": "Timeout",
-    "untimeout": "Timeout Removed",
-    "mute": "Mute",
-    "unmute": "Unmute",
-    "automod": "AutoMod",
-}
-
-
-def get_action_label(action: str) -> str:
-    """Return a friendly label for a stored action value."""
-    return ACTION_LABELS.get(action, action.title())
-
 
 def format_case_reason(case: dict) -> str:
     """Render a readable reason string for case embeds."""
     reason = case["reason"] or "No reason given"
+    # Clear-warning cases use this field for the count removed, not a time span.
     if case["action"] == "clearwarns" and case.get("duration"):
         return f"Removed {case['duration']} warning(s). Note: {reason}"
     return reason

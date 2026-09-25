@@ -9,7 +9,6 @@ Admins can create simple reusable responses such as ,rules, ,socials, or
 ,appeal without editing the bot code.
 """
 
-# These are deliberately simple: name in, saved response out.
 import re
 
 from discord.ext import commands
@@ -66,6 +65,7 @@ class CustomCommands(commands.Cog, name="Custom Commands"):
             )
             return await ctx.send(embed=embed)
 
+        # Built-in aliases count too, so a custom response cannot shadow a staff command.
         if self.bot.get_command(normalized):
             embed = await make_embed(
                 self.bot,

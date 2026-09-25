@@ -9,7 +9,6 @@ Only aggregate counts are stored here. The bot does not save message content,
 which keeps this feature useful without feeling invasive.
 """
 
-# This cog is stats only, not message spying.
 from datetime import datetime
 
 import discord
@@ -61,6 +60,7 @@ class Activity(commands.Cog, name="Activity"):
             voice_join_times[key] = discord.utils.utcnow()
             return
 
+        # Leaving ends the session; moving channels below starts a new timer.
         if before.channel is not None and after.channel is None:
             join_time = voice_join_times.pop(key, None)
             if join_time:

@@ -10,7 +10,6 @@ moderation, tickets, activity, and Sentinel data into staff dashboards that are
 quick to scan during real server work.
 """
 
-# This pulls useful bits from other systems into one staff-facing dashboard.
 from __future__ import annotations
 
 from datetime import datetime
@@ -51,20 +50,8 @@ from utils.db import (
 )
 from utils.embeds import make_embed
 from utils.errors import SafeView
+from utils.moderation import get_action_label
 from utils.time import unix_timestamp
-
-ACTION_LABELS = {
-    "ban": "Ban",
-    "softban": "Softban",
-    "unban": "Unban",
-    "kick": "Kick",
-    "tempban": "Tempban",
-    "warn": "Warn",
-    "note": "Note",
-    "clearwarns": "Clear Warns",
-    "timeout": "Timeout",
-    "untimeout": "Untimeout",
-}
 
 CORE_PERMISSIONS = {
     "view_channel": "View Channels",
@@ -260,7 +247,7 @@ class CommandCenter(commands.Cog, name="Command Center"):
 
         mod_total = sum(row["total"] for row in case_counts)
         mod_lines = [
-            f"{ACTION_LABELS.get(row['action'], row['action'].title())}: {row['total']}"
+            f"{get_action_label(row['action'])}: {row['total']}"
             for row in case_counts[:5]
         ]
         embed.add_field(
@@ -333,7 +320,7 @@ class CommandCenter(commands.Cog, name="Command Center"):
             ),
             inline=False,
         )
-        embed.set_footer(text=f"Use {PREFIX}doctor for the full setup diagnosis")
+        embed.set_footer(text=f"Setup: {PREFIX}doctor | Permission review: {PREFIX}securityaudit")
         return embed
 
     async def build_doctor_embed(self, guild: discord.Guild) -> discord.Embed:
@@ -470,6 +457,7 @@ class CommandCenter(commands.Cog, name="Command Center"):
             None,
         )
 
+        # Live activity belongs to Sentinel; read its window instead of tracking it twice.
         sentinel_cog = self.bot.get_cog("Sentinel")
         live_messages = (
             sentinel_cog.recent_messages(ctx.guild.id, member.id, 300)
@@ -551,7 +539,7 @@ class CommandCenter(commands.Cog, name="Command Center"):
             recent_lines = []
             for case in cases[:5]:
                 reason = truncate(case["reason"] or "No reason given", 70)
-                label = ACTION_LABELS.get(case["action"], case["action"].title())
+                label = get_action_label(case["action"])
                 recent_lines.append(f"`#{case['id']}` {label} - {reason}")
             embed.add_field(
                 name="Recent Cases",

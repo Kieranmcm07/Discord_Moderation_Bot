@@ -19,18 +19,7 @@ from discord.ext import commands
 from config import COLOR_INFO, COLOR_SUCCESS, PREFIX
 from utils.db import clear_afk_status, get_afk_status, set_afk_status
 from utils.embeds import make_embed
-
-
-def parse_sqlite_timestamp(value: str) -> datetime | None:
-    """Read SQLite CURRENT_TIMESTAMP values as UTC datetimes."""
-    if not value:
-        return None
-
-    if "T" not in value:
-        value = value.replace(" ", "T", 1)
-    if not value.endswith(("+00:00", "Z")):
-        value = f"{value}+00:00"
-    return discord.utils.parse_time(value)
+from utils.time import parse_db_timestamp
 
 
 class AFK(commands.Cog, name="AFK"):
@@ -66,6 +55,7 @@ class AFK(commands.Cog, name="AFK"):
         if message.author.bot or not message.guild:
             return
 
+        # The command that sets AFK also reaches this listener. Do not clear it immediately.
         if not self._is_afk_command(message):
             status = await clear_afk_status(message.guild.id, message.author.id)
             if status:
@@ -97,7 +87,7 @@ class AFK(commands.Cog, name="AFK"):
             if not self._can_notify(message.guild.id, message.channel.id, member.id):
                 continue
 
-            created_at = parse_sqlite_timestamp(status["created_at"])
+            created_at = parse_db_timestamp(status["created_at"])
             since = f" <t:{int(created_at.timestamp())}:R>" if created_at else ""
             reason = status["reason"]
             if len(reason) > 120:

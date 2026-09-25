@@ -30,6 +30,7 @@ def parse_db_timestamp(value: str | datetime | None) -> datetime | None:
         except ValueError:
             return None
 
+    # SQLite CURRENT_TIMESTAMP has no offset, but it is UTC rather than local time.
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)

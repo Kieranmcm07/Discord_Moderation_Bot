@@ -105,6 +105,18 @@
 
 ## Features
 
+### New in v1.3.0: Server Security Center
+
+Run `,securityaudit` for a private, interactive review of dangerous public roles,
+exposed staff logs, missing log-delivery permissions, and role exceptions to
+channel locks. Page through findings, refresh after a fix, or export the full
+report. Run `,access @member #channel` to explain exactly which roles and channel
+overwrites contribute to a member's effective text-channel permissions.
+
+Both commands require **Manage Server** and send results by DM. They reuse your
+existing bot settings and make no changes to server permissions. See the
+[Security Center guide](#using-the-security-center) for scope and examples.
+
 <table>
   <tr>
     <td width="50%">
@@ -243,7 +255,7 @@ copy .env.example .env
 ```env
 BOT_TOKEN=YOUR_BOT_TOKEN_HERE
 PREFIX=,
-BOT_VERSION=v1.2.0
+BOT_VERSION=v1.3.0
 PRESENCE_ROTATION_SECONDS=45
 OWNER_IDS=
 MOD_LOG_CHANNEL_ID=0
@@ -373,6 +385,13 @@ The default prefix in this README is `,`. Change it with `PREFIX` in `.env`.
 | `,doctor` | Diagnose permissions and setup gaps |
 | `,member360 @user` | Show a complete staff profile for one member |
 
+### Server Security
+
+| Command | Description |
+| --- | --- |
+| `,securityaudit` / `,security` | DM an interactive permission audit with refresh and export |
+| `,access @member [#channel]` | DM effective text-channel permissions and the overwrite trace |
+
 ### Moderation
 
 | Command | Description |
@@ -389,8 +408,7 @@ The default prefix in this README is `,`. Change it with `PREFIX` in `.env`.
 | `,note @user <note>` | Add a private moderator note |
 | `,timeout @user [duration] [reason]` | Timeout a member |
 | `,untimeout @user [reason]` | Remove a timeout |
-| `,purge <amount>` | Delete recent messages |
-| `,clean <amount> [@user]` | Delete recent messages, optionally from one user |
+| `,purge <amount> [@user]` | Delete recent messages, optionally from one user; `clean` and `clear` are aliases |
 | `,chatlog [#channel] [amount]` | Export recent messages as a text file |
 | `,purgelinks <amount>` | Delete recent messages containing links |
 | `,purgebots <amount>` | Delete recent bot messages |
@@ -525,7 +543,6 @@ The default prefix in this README is `,`. Change it with `PREFIX` in `.env`.
 | `,join` | Join your current voice channel |
 | `,play <url, search, Spotify, or YouTube playlist>` | Play audio from a URL, search term, Spotify link, or YouTube playlist |
 | `,queue` | Show the queue |
-| `,controls` | Show interactive music controls |
 | `,skip` | Skip the current track |
 | `,pause` | Pause playback |
 | `,resume` | Resume playback |
@@ -542,7 +559,7 @@ The default prefix in this README is `,`. Change it with `PREFIX` in `.env`.
 | `,chipmunk` | Turn on the chipmunk filter |
 | `,stop` | Stop playback and clear the queue |
 | `,leave` | Leave the current voice channel |
-| `,nowplaying` | Show the current track |
+| `,nowplaying` | Show the current track and player controls; `controls`, `np`, `musicpanel`, and `player` are aliases |
 
 ### Fun And Utility
 
@@ -559,6 +576,82 @@ The default prefix in this README is `,`. Change it with `PREFIX` in `.env`.
 | `,joke` | Tell a clean joke |
 | `,meme [top \| bottom]` | Post a generated meme image |
 | `,ship @user1 @user2` | Generate a fun ship score |
+
+## Using The Security Center
+
+Run `,securityaudit` in your server to receive a private dashboard by DM. Both
+security commands require **Manage Server**. Enable DMs from the server first;
+if delivery fails, the bot asks you to enable them without posting the report
+in the public channel.
+
+The dashboard checks:
+
+- Powerful permissions on everyone, autoroles, and configured reaction roles,
+  including dangerous text-channel overrides.
+- Administrator roles that bypass channel restrictions.
+- Exposure of configured moderation, message-audit, ticket-transcript, and
+  Sentinel log channels through everyone or publicly assigned roles.
+- Missing log channels, stale public-role settings, and missing bot permissions
+  needed to deliver logs and transcripts.
+- Role allowances that bypass an everyone Send Messages deny. These are marked
+  for review because staff exceptions can be intentional.
+
+Use **Previous/Next** to browse findings, **Refresh** after changing permissions,
+and **Export report** to save the full results. Controls expire after five
+minutes of inactivity. They recheck your current server membership and Manage
+Server permission each time you use them.
+
+For a specific member, run:
+
+```text
+,access @member #general
+```
+
+This explains effective text-channel permissions, including everyone, role,
+member, timeout, and Administrator effects. Role allows beat other role denies;
+member overwrites apply afterwards. Final values come from discord.py's
+permission resolver. The attached report includes the full trace.
+
+The audit uses the bot's current cached state and existing settings. Public-role
+checks project everyone plus one role; they do not enumerate every member's
+role combination or personal overrides. Use `access` to inspect an individual.
+Other bots' role panels and unconfigured private channels are outside the scan.
+Threads, voice channels, and forums are outside the access explainer's scope.
+AutoMod, slowmode, and verification can still prevent an action even when the
+permissions allow it. No findings means no issues found in these checks, not a
+security guarantee. The commands never change your permissions.
+
+Permission rules: [Discord documentation](https://docs.discord.com/developers/topics/permissions).
+
+## v1.3.0 Update Notes
+
+- Added the private Server Security Center and channel access explainer.
+- Merged `clean` into `purge`, with optional user filtering. The old names still
+  work as aliases and no longer need separate command implementations.
+- Merged `controls` into `nowplaying`. Either name opens the same player panel,
+  including when playback is idle.
+- Shared ticket/appeal channel permissions, moderation log delivery, case labels,
+  and timestamp parsing instead of keeping separate copies.
+- Kept the focused member commands: `stats` is a public activity view,
+  `modsummary` supports departed users, and `member360` combines staff context.
+  Tickets and appeals still have separate workflows; AutoMod handles individual
+  message rules while Sentinel watches behaviour over time.
+
+Restart the bot after updating. If your existing `.env` specifies a version,
+set `BOT_VERSION=v1.3.0` there to update the displayed status. No new dependency,
+API key, or database migration is needed for the Security Center.
+
+## Development Checks
+
+```bash
+python -m unittest discover -s tests -q
+python -m compileall -q cogs utils tests main.py config.py launcher.py
+```
+
+Tests run offline and use isolated database files. Before publishing, check in a
+test server that `securityaudit` arrives by DM, its buttons and export work,
+and `access` explains a test role's channel override correctly. Also check
+`purge` with and without a user and the `nowplaying`/`controls` aliases.
 
 ## Data And Behaviour Notes
 
@@ -596,6 +689,7 @@ The default prefix in this README is `,`. Change it with `PREFIX` in `.env`.
 |   |-- music.py
 |   |-- reaction_roles.py
 |   |-- reminders.py
+|   |-- security.py
 |   |-- server_management.py
 |   |-- sentinel.py
 |   |-- tickets.py
@@ -611,6 +705,9 @@ The default prefix in this README is `,`. Change it with `PREFIX` in `.env`.
 |   |-- db.py
 |   |-- embeds.py
 |   |-- errors.py
+|   |-- moderation.py
+|   |-- security.py
+|   |-- tickets.py
 |   `-- time.py
 |-- .env.example
 |-- config.py

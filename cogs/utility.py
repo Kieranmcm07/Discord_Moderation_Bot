@@ -4,7 +4,6 @@
 # ============================================================
 """Small utility commands."""
 
-# Tiny commands that do not need their own whole category.
 import discord
 from discord.ext import commands
 
@@ -26,6 +25,7 @@ class Utility(commands.Cog, name="Utility"):
     @commands.command(name="ping", help="Check the bot's websocket latency.")
     async def ping(self, ctx):
         """Usage: ,ping"""
+        # This is the gateway heartbeat delay, not the time taken to run this command.
         latency_ms = round(self.bot.latency * 1000)
         embed = await make_embed(
             self.bot,

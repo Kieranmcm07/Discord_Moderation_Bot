@@ -9,10 +9,8 @@ The bot has enough commands now that grouping and presentation matter more than
 just dumping a plain command list.
 """
 
-# Keeping help readable matters because this bot has a lot of commands now.
 import inspect
 
-import discord
 from discord.ext import commands
 
 from config import COLOR_ERROR, COLOR_INFO, PREFIX
@@ -94,6 +92,7 @@ class Help(commands.Cog, name="Help"):
         )
         embed.set_author(name=author_name, icon_url=author_icon)
 
+        # Aliases point to the same Command and should not get extra help entries.
         for cog_name, cog in self.bot.cogs.items():
             cog_commands = [cmd for cmd in cog.get_commands() if not cmd.hidden]
             if not cog_commands:

@@ -9,7 +9,6 @@ These helpers keep the bot's responses visually consistent without forcing each
 command to repeat the same thumbnail, footer, and optional image setup.
 """
 
-# If embeds look consistent, the whole bot feels more polished.
 from __future__ import annotations
 
 import discord
@@ -24,6 +23,7 @@ async def themed_color(guild: discord.Guild | None, fallback: int = COLOR_INFO) 
         return fallback
 
     settings = await get_guild_settings(guild.id)
+    # Zero is a valid colour value, so a truthiness check would lose it.
     if settings and settings.get("embed_color") is not None:
         return settings["embed_color"]
     return fallback

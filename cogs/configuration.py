@@ -9,7 +9,6 @@ These commands shape how the bot feels in each server: welcome messages, leave
 messages, embed theming, and the optional shared image or GIF for branded embeds.
 """
 
-# Server owners can tweak the bot here without editing code.
 import logging
 
 import discord
@@ -41,6 +40,7 @@ log = logging.getLogger(__name__)
 
 def render_template(template: str, member: discord.Member) -> str:
     """Render the supported placeholders in welcome and leave templates."""
+    # Replace only supported tokens; other braces in the message stay as written.
     return (
         template.replace("{user}", member.mention)
         .replace("{username}", member.name)

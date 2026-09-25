@@ -62,6 +62,7 @@ class ServerManagement(commands.Cog, name="Server Management"):
         self._sticky_refresh_tasks.clear()
 
     def _schedule_sticky_refresh(self, channel: discord.TextChannel):
+        # Wait for a quiet moment instead of reposting the sticky for every message in a burst.
         existing_task = self._sticky_refresh_tasks.get(channel.id)
         if existing_task:
             existing_task.cancel()

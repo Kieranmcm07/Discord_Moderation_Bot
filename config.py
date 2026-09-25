@@ -10,7 +10,6 @@ simple to run locally. Per-server customization still lives in the database and
 is managed through bot commands.
 """
 
-# Most values come from .env so I do not have to hard-code private stuff.
 import os
 
 from dotenv import load_dotenv
@@ -32,6 +31,7 @@ def parse_int_env(name: str, default: int = 0) -> int:
 
 def resolve_mod_log_channel_id(settings: dict | None = None) -> int:
     """Return a guild mod-log override, falling back to the environment default."""
+    # A saved zero disables logging; it must not fall back to the environment setting.
     if settings and settings.get("mod_log_channel_id") is not None:
         return int(settings.get("mod_log_channel_id") or 0)
     return MOD_LOG_CHANNEL_ID
@@ -40,7 +40,7 @@ def resolve_mod_log_channel_id(settings: dict | None = None) -> int:
 # Core startup settings.
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 PREFIX = os.getenv("PREFIX", ",")
-BOT_VERSION = os.getenv("BOT_VERSION", "v1.2.0").strip() or "v1.2.0"
+BOT_VERSION = os.getenv("BOT_VERSION", "v1.3.0").strip() or "v1.3.0"
 PRESENCE_ROTATION_SECONDS = max(10, parse_int_env("PRESENCE_ROTATION_SECONDS", 10))
 OWNER_IDS = [
     int(value)

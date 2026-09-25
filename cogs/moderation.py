@@ -6,7 +6,6 @@
 cogs/moderation.py - moderation commands and warn escalation rules.
 """
 
-# The main staff toolbox: actions, warnings, logs, and escalation.
 import asyncio
 import io
 import logging
@@ -16,14 +15,13 @@ from datetime import datetime, timedelta, timezone
 import discord
 from discord.ext import commands, tasks
 
-from config import COLOR_ERROR, COLOR_MOD, COLOR_SUCCESS, resolve_mod_log_channel_id
+from config import COLOR_ERROR, COLOR_MOD, COLOR_SUCCESS
 from utils.db import (
     add_case,
     add_temp_ban,
     clear_recent_warns,
     get_expired_temp_bans,
     get_escalation_rules,
-    get_guild_settings,
     get_matching_escalation_rule,
     get_recent_warns,
     get_temp_bans_for_guild,
@@ -32,6 +30,7 @@ from utils.db import (
     remove_escalation_rule,
     upsert_escalation_rule,
 )
+from utils.moderation import send_mod_log
 from utils.time import parse_db_timestamp, unix_timestamp
 
 log = logging.getLogger(__name__)
@@ -265,6 +264,7 @@ class Moderation(commands.Cog, name="Moderation"):
         target: discord.Member,
         warn_count: int,
     ) -> discord.Embed | None:
+        # Pick the saved threshold reached by this warning count.
         rule = await get_matching_escalation_rule(ctx.guild.id, warn_count)
         if not rule or target == ctx.author:
             return None
@@ -342,25 +342,6 @@ class Moderation(commands.Cog, name="Moderation"):
             return self.mod_embed("Auto Ban", target, ctx.author, reason, case_id)
 
         return None
-
-    async def send_mod_log(self, guild: discord.Guild, embed: discord.Embed):
-        """Post an embed to the mod log channel if one is configured."""
-        settings = await get_guild_settings(guild.id) or {}
-        channel_id = resolve_mod_log_channel_id(settings)
-        if not channel_id:
-            return
-
-        channel = guild.get_channel(channel_id)
-        if channel:
-            try:
-                await channel.send(embed=embed)
-            except (discord.Forbidden, discord.HTTPException):
-                log.warning(
-                    "Could not send moderation log in guild %s to channel %s.",
-                    guild.id,
-                    channel_id,
-                    exc_info=True,
-                )
 
     async def try_dm(self, user: discord.abc.User, embed: discord.Embed):
         """Try to DM the user and ignore closed DMs."""
@@ -457,7 +438,7 @@ class Moderation(commands.Cog, name="Moderation"):
                         "Temporary ban expired.",
                         case_id,
                     )
-                    await self.send_mod_log(guild, embed)
+                    await send_mod_log(guild, embed)
                     remove_entry = True
                 except discord.NotFound:
                     remove_entry = True
@@ -501,7 +482,7 @@ class Moderation(commands.Cog, name="Moderation"):
         case_id = await add_case(ctx.guild.id, target.id, ctx.author.id, "ban", reason)
         embed = self.mod_embed("Ban", target, ctx.author, reason, case_id)
         await ctx.send(embed=embed)
-        await self.send_mod_log(ctx.guild, embed)
+        await send_mod_log(ctx.guild, embed)
 
     @commands.command(
         name="tempban",
@@ -564,7 +545,7 @@ class Moderation(commands.Cog, name="Moderation"):
             inline=False,
         )
         await ctx.send(embed=embed)
-        await self.send_mod_log(ctx.guild, embed)
+        await send_mod_log(ctx.guild, embed)
 
     @commands.command(name="unban", help="Unban a user by their ID.")
     @commands.has_permissions(ban_members=True)
@@ -597,7 +578,7 @@ class Moderation(commands.Cog, name="Moderation"):
         case_id = await add_case(ctx.guild.id, user.id, ctx.author.id, "unban", reason)
         embed = self.mod_embed("Unban", user, ctx.author, reason, case_id)
         await ctx.send(embed=embed)
-        await self.send_mod_log(ctx.guild, embed)
+        await send_mod_log(ctx.guild, embed)
 
     @commands.command(name="kick", help="Kick a user from the server.")
     @commands.has_permissions(kick_members=True)
@@ -618,7 +599,7 @@ class Moderation(commands.Cog, name="Moderation"):
         case_id = await add_case(ctx.guild.id, target.id, ctx.author.id, "kick", reason)
         embed = self.mod_embed("Kick", target, ctx.author, reason, case_id)
         await ctx.send(embed=embed)
-        await self.send_mod_log(ctx.guild, embed)
+        await send_mod_log(ctx.guild, embed)
 
     @commands.command(
         name="softban",
@@ -678,7 +659,7 @@ class Moderation(commands.Cog, name="Moderation"):
             f"{delete_days} day(s) deleted",
         )
         await ctx.send(embed=embed)
-        await self.send_mod_log(ctx.guild, embed)
+        await send_mod_log(ctx.guild, embed)
 
     @commands.command(name="warn", help="Issue a warning to a user.")
     @commands.has_permissions(kick_members=True)
@@ -697,13 +678,13 @@ class Moderation(commands.Cog, name="Moderation"):
         )
         embed = self.mod_embed("Warn", target, ctx.author, reason, case_id)
         await ctx.send(embed=embed)
-        await self.send_mod_log(ctx.guild, embed)
+        await send_mod_log(ctx.guild, embed)
 
         warn_count = await get_warn_count(ctx.guild.id, target.id)
         escalation_embed = await self.apply_escalation(ctx, target, warn_count)
         if escalation_embed:
             await ctx.send(embed=escalation_embed)
-            await self.send_mod_log(ctx.guild, escalation_embed)
+            await send_mod_log(ctx.guild, escalation_embed)
 
     @commands.command(
         name="note",
@@ -728,7 +709,7 @@ class Moderation(commands.Cog, name="Moderation"):
         embed.add_field(name="Note", value=note, inline=False)
         embed.set_footer(text=f"Case #{case_id}")
         await ctx.send(embed=embed)
-        await self.send_mod_log(ctx.guild, embed)
+        await send_mod_log(ctx.guild, embed)
 
     @commands.command(
         name="warnings",
@@ -844,7 +825,7 @@ class Moderation(commands.Cog, name="Moderation"):
         embed.set_footer(text=f"Case #{case_id}")
 
         await ctx.send(embed=embed)
-        await self.send_mod_log(ctx.guild, embed)
+        await send_mod_log(ctx.guild, embed)
 
     @commands.command(
         name="timeout",
@@ -901,7 +882,7 @@ class Moderation(commands.Cog, name="Moderation"):
         )
         embed = self.mod_embed("Timeout", target, ctx.author, reason, case_id, duration)
         await ctx.send(embed=embed)
-        await self.send_mod_log(ctx.guild, embed)
+        await send_mod_log(ctx.guild, embed)
 
     @commands.command(
         name="untimeout",
@@ -928,48 +909,22 @@ class Moderation(commands.Cog, name="Moderation"):
         )
         embed = self.mod_embed("Untimeout", target, ctx.author, reason, case_id)
         await ctx.send(embed=embed)
-        await self.send_mod_log(ctx.guild, embed)
+        await send_mod_log(ctx.guild, embed)
 
     @commands.command(
         name="purge",
-        aliases=["clear"],
-        help="Bulk delete messages from the current channel.",
-    )
-    @commands.has_permissions(manage_messages=True)
-    @commands.bot_has_permissions(manage_messages=True)
-    async def purge(self, ctx, amount: int):
-        """Usage: ,purge <amount>"""
-        if amount < 1 or amount > 500:
-            return await ctx.send(
-                embed=discord.Embed(
-                    description="Amount must be between 1 and 500.",
-                    color=COLOR_ERROR,
-                )
-            )
-
-        deleted = await ctx.channel.purge(limit=amount + 1)
-        msg = await ctx.send(
-            embed=discord.Embed(
-                description=f"Deleted **{len(deleted) - 1}** messages.",
-                color=COLOR_SUCCESS,
-            )
-        )
-        await self.delete_after_delay(msg)
-
-    @commands.command(
-        name="clean",
-        aliases=["purgeuser", "clearuser"],
+        aliases=["clear", "clean", "purgeuser", "clearuser"],
         help="Delete recent messages, optionally only from one user.",
     )
     @commands.has_permissions(manage_messages=True)
     @commands.bot_has_permissions(manage_messages=True)
-    async def clean(
+    async def purge(
         self,
         ctx,
         amount: int,
         target: discord.Member | discord.User = None,
     ):
-        """Usage: ,clean <amount> [@user]"""
+        """Usage: ,purge <amount> [@user]"""
         if amount < 1 or amount > 500:
             return await ctx.send(
                 embed=discord.Embed(
@@ -985,8 +940,10 @@ class Moderation(commands.Cog, name="Moderation"):
                 return True
             return message.author.id == target.id
 
+        # This limits messages scanned, not matches found for the target user.
         deleted = await ctx.channel.purge(limit=amount + 1, check=check)
-        removed = max(0, len(deleted) - 1)
+        # The command may already be gone; only exclude it if it was deleted.
+        removed = sum(message.id != ctx.message.id for message in deleted)
         scope = f" from {target.mention}" if target else ""
         msg = await ctx.send(
             embed=discord.Embed(
@@ -1143,7 +1100,8 @@ class Moderation(commands.Cog, name="Moderation"):
             check=lambda message: message.id == ctx.message.id
             or bool(LINK_PATTERN.search(message.content)),
         )
-        removed = max(0, len(deleted) - 1)
+        # The command may already be gone; only exclude it if it was deleted.
+        removed = sum(message.id != ctx.message.id for message in deleted)
         msg = await ctx.send(
             embed=discord.Embed(
                 description=(
@@ -1175,7 +1133,8 @@ class Moderation(commands.Cog, name="Moderation"):
             limit=amount + 1,
             check=lambda message: message.id == ctx.message.id or message.author.bot,
         )
-        removed = max(0, len(deleted) - 1)
+        # The command may already be gone; only exclude it if it was deleted.
+        removed = sum(message.id != ctx.message.id for message in deleted)
         msg = await ctx.send(
             embed=discord.Embed(
                 description=f"Deleted **{removed}** recent bot message(s).",

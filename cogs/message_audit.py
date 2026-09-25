@@ -106,6 +106,7 @@ class MessageAudit(commands.Cog, name="Message Audit"):
         if not before.guild or before.author.bot:
             return
 
+        # Embed previews can trigger edits too; only report actual text changes.
         if before.content == after.content:
             return
 

@@ -8,7 +8,6 @@ Users open tickets from a button panel, the bot creates a private channel,
 and staff can manage or close it with transcript logging.
 """
 
-# Tickets are a bigger feature, so the flow is kept in this one cog.
 from __future__ import annotations
 
 import asyncio
@@ -37,6 +36,7 @@ from utils.db import (
     upsert_ticket_settings,
 )
 from utils.errors import SafeView
+from utils.tickets import get_staff_roles, ticket_overwrites
 
 log = logging.getLogger(__name__)
 
@@ -124,15 +124,6 @@ class Tickets(commands.Cog, name="Tickets"):
             view.add_item(TicketCreateButton(self, category))
             self.bot.add_view(view)
             self._registered_create_buttons.add(key)
-
-    async def _get_staff_roles(self, guild: discord.Guild) -> list[discord.Role]:
-        role_ids = await get_ticket_roles(guild.id)
-        roles = []
-        for role_id in role_ids:
-            role = guild.get_role(role_id)
-            if role:
-                roles.append(role)
-        return roles
 
     async def _is_ticket_staff(self, member: discord.Member) -> bool:
         if (
@@ -238,6 +229,7 @@ class Tickets(commands.Cog, name="Tickets"):
 
         await interaction.response.defer(ephemeral=True, thinking=True)
         lock_key = (interaction.guild.id, interaction.user.id)
+        # Serialize clicks from this member while their channel is being created.
         ticket_lock = self._ticket_creation_locks.setdefault(lock_key, asyncio.Lock())
 
         async with ticket_lock:
@@ -296,35 +288,10 @@ class Tickets(commands.Cog, name="Tickets"):
                     "I am not ready yet. Try again in a moment.",
                 )
 
-            staff_roles = await self._get_staff_roles(interaction.guild)
-            overwrites = {
-                interaction.guild.default_role: discord.PermissionOverwrite(
-                    view_channel=False
-                ),
-                me: discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    read_message_history=True,
-                    manage_channels=True,
-                ),
-                interaction.user: discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    attach_files=True,
-                    embed_links=True,
-                    read_message_history=True,
-                ),
-            }
-
-            for role in staff_roles:
-                overwrites[role] = discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    attach_files=True,
-                    embed_links=True,
-                    read_message_history=True,
-                    manage_messages=True,
-                )
+            staff_roles = await get_staff_roles(interaction.guild)
+            overwrites = ticket_overwrites(
+                interaction.guild, me, interaction.user, staff_roles
+            )
 
             safe_user = slugify(interaction.user.display_name)
             safe_category = slugify(live_category["name"])
@@ -548,7 +515,7 @@ class Tickets(commands.Cog, name="Tickets"):
     )
     @commands.has_permissions(manage_guild=True)
     async def ticket_roles(self, ctx):
-        roles = await self._get_staff_roles(ctx.guild)
+        roles = await get_staff_roles(ctx.guild)
         description = (
             "\n".join(role.mention for role in roles)
             if roles
@@ -701,7 +668,7 @@ class Tickets(commands.Cog, name="Tickets"):
     @commands.has_permissions(manage_guild=True)
     async def ticket_settings(self, ctx):
         settings = await get_ticket_settings(ctx.guild.id) or {}
-        roles = await self._get_staff_roles(ctx.guild)
+        roles = await get_staff_roles(ctx.guild)
         categories = await get_ticket_categories(ctx.guild.id)
 
         category_channel = ctx.guild.get_channel(settings.get("category_id", 0))

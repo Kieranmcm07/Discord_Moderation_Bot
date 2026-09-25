@@ -4,7 +4,6 @@
 # ============================================================
 """Friendly Windows launcher that shows boot logs, then leaves the bot running."""
 
-# This is mostly quality-of-life for running my own bot from a double-click.
 import ctypes
 import json
 import math
@@ -303,6 +302,7 @@ def main():
     print(paint(CREDITS_BANNER, "95"))
 
     log_file = project_dir / "bot.log"
+    # Start at the end so this launch does not replay the previous run's log.
     log_offset = log_file.stat().st_size if log_file.exists() else 0
     status_file = Path(tempfile.gettempdir()) / "discord_mod_bot_status.json"
     lock_file = Path(tempfile.gettempdir()) / "discord_mod_bot.lock"

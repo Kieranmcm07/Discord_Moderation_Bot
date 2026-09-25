@@ -10,7 +10,6 @@ global command errors. Keeping those pieces together makes the rest of the
 project easier to reason about.
 """
 
-# This is the one file I expect people to run directly.
 import argparse
 import asyncio
 import atexit
@@ -301,6 +300,7 @@ def acquire_lock():
     )
 
     try:
+        # Exclusive creation prevents two launchers from claiming the lock together.
         with LOCK_FILE.open("x", encoding="utf-8") as handle:
             handle.write(payload)
         LOCK_ACQUIRED = True
@@ -414,6 +414,7 @@ class MyBot(commands.Bot):
             "cogs.sentinel",
             "cogs.automod",
             "cogs.command_center",
+            "cogs.security",
             "cogs.custom_commands",
             "cogs.music",
             "cogs.server_management",
@@ -508,7 +509,7 @@ class MyBot(commands.Bot):
             ),
             discord.Activity(
                 type=discord.ActivityType.watching,
-                name=f"startup #{STARTUP_COUNT}",
+                name=f"Startup #{STARTUP_COUNT}",
             ),
         ]
 

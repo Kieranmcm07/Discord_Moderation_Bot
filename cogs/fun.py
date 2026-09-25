@@ -6,7 +6,6 @@
 cogs/fun.py - a few fun community commands.
 """
 
-# Nothing serious in here, just small commands to make the bot feel alive.
 import random
 from urllib.parse import quote
 
@@ -151,6 +150,7 @@ class Fun(commands.Cog, name="Fun"):
             if len(parts) > 1 and parts[1]:
                 bottom_text = parts[1]
 
+        # Captions are URL path segments, so spaces and slashes need escaping.
         image_url = (
             f"https://api.memegen.link/images/{template}/"
             f"{quote(top_text, safe='')}/{quote(bottom_text, safe='')}.png"

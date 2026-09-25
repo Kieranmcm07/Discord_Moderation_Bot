@@ -34,6 +34,7 @@ from utils.db import (
 )
 from utils.embeds import make_embed
 from utils.errors import SafeModal, SafeView
+from utils.tickets import get_staff_roles, ticket_overwrites
 from utils.time import unix_timestamp
 
 log = logging.getLogger(__name__)
@@ -106,14 +107,6 @@ class Appeals(commands.Cog, name="Appeals"):
         view = SafeView(timeout=None)
         view.add_item(AppealCreateButton(self))
         return view
-
-    async def _get_staff_roles(self, guild: discord.Guild) -> list[discord.Role]:
-        roles = []
-        for role_id in await get_ticket_roles(guild.id):
-            role = guild.get_role(role_id)
-            if role:
-                roles.append(role)
-        return roles
 
     async def _is_appeal_staff(self, member: discord.Member) -> bool:
         if (
@@ -206,6 +199,7 @@ class Appeals(commands.Cog, name="Appeals"):
 
         await interaction.response.defer(ephemeral=True)
         lock_key = (interaction.guild.id, interaction.user.id)
+        # A double submit should open one appeal, not two channels.
         appeal_lock = self._appeal_locks.setdefault(lock_key, asyncio.Lock())
 
         async with appeal_lock:
@@ -231,34 +225,10 @@ class Appeals(commands.Cog, name="Appeals"):
                     ephemeral=True,
                 )
 
-            staff_roles = await self._get_staff_roles(interaction.guild)
-            overwrites = {
-                interaction.guild.default_role: discord.PermissionOverwrite(
-                    view_channel=False
-                ),
-                me: discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    read_message_history=True,
-                    manage_channels=True,
-                ),
-                interaction.user: discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    attach_files=True,
-                    embed_links=True,
-                    read_message_history=True,
-                ),
-            }
-            for role in staff_roles:
-                overwrites[role] = discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    attach_files=True,
-                    embed_links=True,
-                    read_message_history=True,
-                    manage_messages=True,
-                )
+            staff_roles = await get_staff_roles(interaction.guild)
+            overwrites = ticket_overwrites(
+                interaction.guild, me, interaction.user, staff_roles
+            )
 
             channel = await interaction.guild.create_text_channel(
                 name=f"appeal-{case_id}-{slugify(interaction.user.display_name)}"[:95],
