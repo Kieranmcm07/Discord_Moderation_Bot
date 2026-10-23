@@ -22,7 +22,6 @@ import os
 import sys
 import tempfile
 import time
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import discord
@@ -174,11 +173,10 @@ def enable_ansi():
 
 
 def configure_logging():
-    """Log to file every time, and to the console unless background mode is used."""
-    file_handler = RotatingFileHandler(
-        "bot.log",
-        maxBytes=5 * 1024 * 1024,
-        backupCount=5,
+    """Append to one persistent log, plus the console unless in background mode."""
+    file_handler = logging.FileHandler(
+        Path(__file__).resolve().with_name("bot.log"),
+        mode="a",
         encoding="utf-8",
     )
     file_handler.setFormatter(
