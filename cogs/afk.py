@@ -11,6 +11,7 @@ when someone mentions them.
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, timedelta
 
 import discord
@@ -28,6 +29,7 @@ class AFK(commands.Cog, name="AFK"):
     def __init__(self, bot):
         self.bot = bot
         self._mention_cooldowns: dict[tuple[int, int, int], datetime] = {}
+        self._next_cleanup = 0.0
 
     def _is_afk_command(self, message: discord.Message) -> bool:
         content = message.content.strip().lower()
@@ -43,6 +45,14 @@ class AFK(commands.Cog, name="AFK"):
     def _can_notify(self, guild_id: int, channel_id: int, user_id: int) -> bool:
         key = (guild_id, channel_id, user_id)
         now = discord.utils.utcnow()
+        tick = time.monotonic()
+        if tick >= self._next_cleanup:
+            self._next_cleanup = tick + 120
+            cutoff = now - timedelta(minutes=2)
+            self._mention_cooldowns = {
+                key: sent for key, sent in self._mention_cooldowns.items()
+                if sent > cutoff
+            }
         last_sent = self._mention_cooldowns.get(key)
         if last_sent and now - last_sent < timedelta(minutes=2):
             return False

@@ -25,8 +25,8 @@ from urllib.parse import parse_qs, urlparse
 
 import aiohttp
 import discord
-from discord.ext import commands
 import yt_dlp
+from discord.ext import commands
 
 from config import (
     COLOR_ERROR,
@@ -662,6 +662,12 @@ class Music(commands.Cog, name="Music"):
         self.spotify_token: str | None = None
         self.spotify_token_expires_at = 0.0
 
+    @staticmethod
+    def finish_playback(completed, error):
+        """Deliver an audio-thread result only to its own unfinished track."""
+        if not completed.done():
+            completed.set_result(error)
+
     def get_state(self, guild_id: int) -> GuildMusicState:
         state = self.states.get(guild_id)
         if state is None:
@@ -671,7 +677,9 @@ class Music(commands.Cog, name="Music"):
 
     async def get_http_session(self) -> aiohttp.ClientSession:
         if self.http_session is None or self.http_session.closed:
-            self.http_session = aiohttp.ClientSession()
+            self.http_session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=30, connect=10)
+            )
         return self.http_session
 
     async def get_spotify_token(self) -> str:
@@ -711,7 +719,7 @@ class Music(commands.Cog, name="Music"):
                     )
 
                 payload = await response.json()
-        except aiohttp.ClientError as exc:
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             raise commands.CommandError(f"Could not reach Spotify: {exc}") from exc
 
         access_token = payload.get("access_token")
@@ -781,7 +789,7 @@ class Music(commands.Cog, name="Music"):
                     )
 
                 return await response.json()
-        except aiohttp.ClientError as exc:
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             raise commands.CommandError(f"Could not reach Spotify: {exc}") from exc
 
     async def collect_spotify_items(
@@ -852,7 +860,7 @@ class Music(commands.Cog, name="Music"):
                         )
                         continue
                     html_text = await response.text()
-            except aiohttp.ClientError as exc:
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 log.warning(
                     "Spotify web playlist fallback could not reach %s: %s",
                     url,
@@ -1460,14 +1468,22 @@ class Music(commands.Cog, name="Music"):
         await self.restart_current_track(ctx, f"Music filter set to **{label}**.")
 
     async def cog_unload(self):
+        player_tasks = [
+            state.player_task for state in self.states.values()
+            if state.player_task is not None
+        ]
+        for task in player_tasks:
+            task.cancel()
+        if player_tasks:
+            await asyncio.gather(*player_tasks, return_exceptions=True)
+
         for guild in self.bot.guilds:
             voice = guild.voice_client
             if voice:
-                await voice.disconnect(force=True)
-
-        for state in self.states.values():
-            if state.player_task:
-                state.player_task.cancel()
+                try:
+                    await voice.disconnect(force=True)
+                except Exception:
+                    log.exception("Could not disconnect voice in guild %s", guild.id)
 
         if self.http_session and not self.http_session.closed:
             await self.http_session.close()
@@ -1940,13 +1956,9 @@ class Music(commands.Cog, name="Music"):
                     state.last_track = track
                     state.skip_requested = False
                     state.stop_requested = False
-                    finished = asyncio.Event()
+                    finished = asyncio.get_running_loop().create_future()
 
-                    playback_error: Exception | None = None
-
-                    def after_playback(error: Exception | None):
-                        nonlocal playback_error
-                        playback_error = error
+                    def after_playback(error: Exception | None, completed=finished):
                         if error:
                             log.warning(
                                 "Music playback error in guild %s: %s",
@@ -1954,17 +1966,26 @@ class Music(commands.Cog, name="Music"):
                                 error,
                             )
                         # Discord calls this from its audio thread, outside the asyncio loop.
-                        self.bot.loop.call_soon_threadsafe(finished.set)
+                        self.bot.loop.call_soon_threadsafe(
+                            self.finish_playback, completed, error
+                        )
 
+                    source = None
+                    playback_started = False
                     try:
                         source = self.make_source(track, state)
                         voice.play(source, after=after_playback)
+                        playback_started = True
                         await self.announce_now_playing(
                             guild,
                             state,
                             fresh=True,
                         )
                     except Exception:
+                        if playback_started:
+                            voice.stop()
+                        elif source is not None:
+                            source.cleanup()
                         log.exception(
                             "Failed to start music playback in guild %s for %s",
                             guild.id,
@@ -1977,7 +1998,7 @@ class Music(commands.Cog, name="Music"):
                         await self.announce_now_playing(guild, state)
                         break
 
-                    await finished.wait()
+                    playback_error = await finished
 
                     if state.restart_requested:
                         await self.archive_player_message(

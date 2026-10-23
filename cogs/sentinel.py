@@ -12,6 +12,7 @@ just transparent signals staff can act on.
 
 import json
 import re
+import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 
@@ -34,7 +35,6 @@ from utils.db import (
 from utils.embeds import make_embed
 from utils.moderation import send_mod_log
 from utils.time import unix_timestamp
-
 
 LINK_PATTERN = re.compile(
     r"https?://\S+|discord(?:app)?\.com/invite/\S+|discord\.gg/\S+",
@@ -69,12 +69,32 @@ class Sentinel(commands.Cog, name="Sentinel"):
         self.join_windows: dict[int, deque] = defaultdict(lambda: deque(maxlen=80))
         self.alert_cooldowns: dict[tuple[int, int], datetime] = {}
         self.join_alert_cooldowns: dict[int, datetime] = {}
+        self._next_cleanup = 0.0
+
+    def prune_tracking(self):
+        """Discard inactive members and expired cooldowns once per minute."""
+        tick = time.monotonic()
+        if tick < self._next_cleanup:
+            return
+        self._next_cleanup = tick + 60
+        now = discord.utils.utcnow()
+        cutoff = now - timedelta(seconds=90)
+        for windows in (self.message_windows, self.join_windows):
+            for key, entries in list(windows.items()):
+                while entries and entries[0]["created_at"] < cutoff:
+                    entries.popleft()
+                if not entries:
+                    del windows[key]
+        for cooldowns in (self.alert_cooldowns, self.join_alert_cooldowns):
+            for key, expires in list(cooldowns.items()):
+                if expires <= now:
+                    del cooldowns[key]
 
     def recent_messages(self, guild_id: int, user_id: int, seconds: int) -> list[dict]:
         now = discord.utils.utcnow()
         return [
             entry
-            for entry in self.message_windows[(guild_id, user_id)]
+            for entry in self.message_windows.get((guild_id, user_id), ())
             if (now - entry["created_at"]).total_seconds() <= seconds
         ]
 
@@ -82,7 +102,7 @@ class Sentinel(commands.Cog, name="Sentinel"):
         now = discord.utils.utcnow()
         return [
             entry
-            for entry in self.join_windows[guild_id]
+            for entry in self.join_windows.get(guild_id, ())
             if (now - entry["created_at"]).total_seconds() <= seconds
         ]
 
@@ -208,6 +228,7 @@ class Sentinel(commands.Cog, name="Sentinel"):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
+        self.prune_tracking()
         settings = await get_sentinel_settings(member.guild.id)
         if not settings.get("enabled"):
             return
@@ -281,6 +302,7 @@ class Sentinel(commands.Cog, name="Sentinel"):
         if message.author.bot or not message.guild:
             return
 
+        self.prune_tracking()
         settings = await get_sentinel_settings(message.guild.id)
         if not settings.get("enabled"):
             return

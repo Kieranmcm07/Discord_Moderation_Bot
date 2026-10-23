@@ -11,6 +11,7 @@ small background loop when they become due.
 
 import logging
 import re
+import sqlite3
 from datetime import timedelta
 
 import discord
@@ -137,21 +138,29 @@ class Reminders(commands.Cog, name="Reminders"):
 
     @tasks.loop(seconds=30)
     async def reminder_loop(self):
-        due = await get_due_reminders(discord.utils.utcnow().isoformat())
-        for reminder in due:
+        now_iso = discord.utils.utcnow().isoformat()
+        after = None
+        while True:
             try:
-                await self.deliver_reminder(reminder)
-            except Exception:
-                log.exception("Failed to deliver reminder %s", reminder["id"])
-                continue
-            # Delivery errors above leave the row in place for the next pass.
-            await delete_reminder(reminder["guild_id"], reminder["id"])
+                due = await get_due_reminders(now_iso, after=after)
+            except sqlite3.OperationalError:
+                log.exception("Could not read due reminders; will retry next pass")
+                return
+            for reminder in due:
+                try:
+                    if await self.deliver_reminder(reminder):
+                        await delete_reminder(reminder["guild_id"], reminder["id"])
+                except Exception:
+                    log.exception("Failed to deliver reminder %s", reminder["id"])
+            if len(due) < 25:
+                return
+            after = (due[-1]["due_at"], due[-1]["id"])
 
     @reminder_loop.before_loop
     async def before_reminder_loop(self):
         await self.bot.wait_until_ready()
 
-    async def deliver_reminder(self, reminder: dict):
+    async def deliver_reminder(self, reminder: dict) -> bool:
         """Send a due reminder to its original channel, falling back to DM."""
         guild = self.bot.get_guild(reminder["guild_id"])
         user = self.bot.get_user(reminder["user_id"])
@@ -159,7 +168,7 @@ class Reminders(commands.Cog, name="Reminders"):
             try:
                 user = await self.bot.fetch_user(reminder["user_id"])
             except discord.NotFound:
-                return
+                return False
             except discord.HTTPException:
                 log.warning(
                     "Could not fetch reminder user %s.",
@@ -178,18 +187,19 @@ class Reminders(commands.Cog, name="Reminders"):
         embed.add_field(name="For", value=user.mention, inline=True)
         embed.add_field(name="Reminder ID", value=f"`{reminder['id']}`", inline=True)
 
-        channel = guild.get_channel(reminder["channel_id"]) if guild else None
+        channel = guild.get_channel_or_thread(reminder["channel_id"]) if guild else None
         if channel:
             try:
                 await channel.send(content=user.mention, embed=embed)
-                return
+                return True
             except (discord.Forbidden, discord.HTTPException):
                 pass
 
         try:
             await user.send(embed=embed)
         except (discord.Forbidden, discord.HTTPException):
-            pass
+            return False
+        return True
 
     @commands.command(
         name="remind",

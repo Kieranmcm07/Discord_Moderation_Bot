@@ -11,6 +11,7 @@ is managed through bot commands.
 """
 
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -54,7 +55,7 @@ GITHUB_PROFILE_URL = "https://github.com/Kieranmcm07"
 PROJECT_REPO_URL = "https://github.com/Kieranmcm07/Discord_Moderation_Bot"
 
 # Database path.
-DB_PATH = os.getenv("DB_PATH", "data/bot.db")
+DB_PATH = str(Path(__file__).resolve().parent / os.getenv("DB_PATH", "data/bot.db"))
 
 # Optional Spotify Web API support for music commands. Spotify is used for
 # metadata only; playback still resolves through the existing yt-dlp flow.

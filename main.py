@@ -24,6 +24,7 @@ import tempfile
 import time
 from pathlib import Path
 
+import aiohttp
 import discord
 from discord.ext import commands
 
@@ -118,7 +119,7 @@ ARGS = parse_args()
 STATUS_FILE = Path(ARGS.status_file).resolve() if ARGS.status_file else None
 LOCK_FILE = Path(tempfile.gettempdir()) / "discord_mod_bot.lock"
 STOP_REQUEST_FILE = Path(tempfile.gettempdir()) / "discord_mod_bot_stop.json"
-STARTUP_COUNT_FILE = Path("data/startup_count.txt")
+STARTUP_COUNT_FILE = Path(__file__).resolve().parent / "data" / "startup_count.txt"
 STARTUP_COUNT = 0
 LOCK_ACQUIRED = False
 
@@ -219,16 +220,26 @@ def increment_startup_count() -> int:
     try:
         STARTUP_COUNT_FILE.parent.mkdir(parents=True, exist_ok=True)
         raw_count = STARTUP_COUNT_FILE.read_text(encoding="utf-8").strip()
-        count = int(raw_count) if raw_count else 0
-    except (OSError, ValueError):
+        count = int(raw_count)
+        if count < 0:
+            raise ValueError("negative startup count")
+    except FileNotFoundError:
         count = 0
+    except (OSError, ValueError) as exc:
+        raise StartupConfigurationError(
+            f"Cannot read startup counter at {STARTUP_COUNT_FILE}; restore it before restarting."
+        ) from exc
 
     count += 1
 
+    # The single-instance lock protects this update. Replace only after the
+    # complete new value is on disk, so an interrupted write keeps the old count.
+    temporary = STARTUP_COUNT_FILE.with_suffix(".tmp")
     try:
-        STARTUP_COUNT_FILE.write_text(str(count), encoding="utf-8")
-    except OSError:
-        log.warning("Could not write startup counter to %s", STARTUP_COUNT_FILE)
+        temporary.write_text(str(count), encoding="utf-8")
+        temporary.replace(STARTUP_COUNT_FILE)
+    finally:
+        temporary.unlink(missing_ok=True)
 
     return count
 
@@ -341,7 +352,6 @@ def render_custom_response(template: str, ctx: commands.Context) -> str:
     )
 
 
-configure_logging()
 log = logging.getLogger("bot")
 atexit.register(release_lock)
 
@@ -539,6 +549,7 @@ class MyBot(commands.Bot):
             await self.wait_until_ready()
             index = 0
             while not self.is_closed():
+                await self.wait_until_ready()
                 activities = self.build_presence_rotation()
                 activity = activities[index % len(activities)]
                 try:
@@ -546,12 +557,14 @@ class MyBot(commands.Bot):
                         status=discord.Status.online,
                         activity=activity,
                     )
-                    log.info(
+                    log.debug(
                         "Updated bot presence: %s",
                         self.presence_log_text(activity),
                     )
                 except discord.HTTPException:
                     log.exception("Discord rejected a presence update")
+                except (aiohttp.ClientError, OSError, discord.ConnectionClosed):
+                    log.warning("Presence update interrupted; will retry after reconnecting")
 
                 index += 1
                 await asyncio.sleep(PRESENCE_ROTATION_SECONDS)
@@ -592,6 +605,10 @@ class MyBot(commands.Bot):
                 f"(startup #{STARTUP_COUNT})"
             ),
         )
+        self.ensure_presence_task()
+
+    async def on_resumed(self):
+        """Resume helpers even when Discord restores an existing session."""
         self.ensure_presence_task()
 
     async def on_error(self, event_method: str, *args, **kwargs):
@@ -901,6 +918,7 @@ async def main():
 
 
 if __name__ == "__main__":
+    configure_logging()
     try:
         acquire_lock()
         asyncio.run(main())

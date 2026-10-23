@@ -14,13 +14,40 @@ import os
 import aiosqlite
 
 from config import DB_PATH
+from utils.cache import AsyncTTLCache
 
 DB_TIMEOUT_SECONDS = 30.0
+_settings_cache = AsyncTTLCache(namespace=lambda: os.path.abspath(DB_PATH))
 
 
 def connect_db():
     """Open SQLite with enough busy timeout for overlapping bot tasks."""
     return aiosqlite.connect(DB_PATH, timeout=DB_TIMEOUT_SECONDS)
+
+
+async def _upsert_settings(table, guild_id, **updates):
+    """Update only supplied columns; concurrent edits retain each other's fields.
+
+    Table and column identifiers come exclusively from the wrappers below.
+    Values, including IDs, remain SQL parameters.
+    """
+    updates = {key: value for key, value in updates.items() if value is not None}
+    columns = ["guild_id", *updates]
+    placeholders = ",".join("?" for _ in columns)
+    conflict = (
+        "DO UPDATE SET " + ",".join(f"{key}=excluded.{key}" for key in updates)
+        if updates else "DO NOTHING"
+    )
+    try:
+        async with connect_db() as db:
+            await db.execute(
+                f"INSERT INTO {table} ({','.join(columns)}) VALUES ({placeholders}) "
+                f"ON CONFLICT(guild_id) {conflict}",
+                (guild_id, *updates.values()),
+            )
+            await db.commit()
+    finally:
+        _settings_cache.clear()
 
 
 async def ensure_column(
@@ -47,6 +74,7 @@ async def ensure_columns(
 
 async def init_db():
     """Create all required tables and perform light schema upgrades."""
+    _settings_cache.clear()
     db_directory = os.path.dirname(DB_PATH)
     if db_directory:
         os.makedirs(db_directory, exist_ok=True)
@@ -381,6 +409,16 @@ async def init_db():
                 "warn_on_trigger": "INTEGER NOT NULL DEFAULT 0",
             },
         )
+
+        # Cover the recurring expiry checks and guild/member history lookups.
+        for statement in (
+            "CREATE INDEX IF NOT EXISTS temp_bans_expiry_idx ON temp_bans(expires_at)",
+            "CREATE INDEX IF NOT EXISTS cases_member_idx ON cases(guild_id, user_id, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS cases_recent_idx ON cases(guild_id, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS member_log_recent_idx ON member_log(guild_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS sentinel_recent_idx ON sentinel_incidents(guild_id, created_at DESC, id DESC)",
+        ):
+            await db.execute(statement)
 
         await db.commit()
 
@@ -761,6 +799,7 @@ async def set_sticky_message(guild_id, channel_id, content: str, created_by_id: 
             (guild_id, channel_id, content, created_by_id, current_message_id),
         )
         await db.commit()
+    _settings_cache.clear()
 
 
 async def clear_sticky_message(channel_id):
@@ -770,8 +809,10 @@ async def clear_sticky_message(channel_id):
             "DELETE FROM sticky_messages WHERE channel_id=?", (channel_id,)
         )
         await db.commit()
+    _settings_cache.clear()
 
 
+@_settings_cache.cached
 async def get_sticky_message(channel_id) -> dict | None:
     """Return the sticky message settings for one channel."""
     async with connect_db() as db:
@@ -815,8 +856,10 @@ async def update_sticky_message_id(channel_id, message_id: int | None):
             (message_id, channel_id),
         )
         await db.commit()
+    _settings_cache.clear()
 
 
+@_settings_cache.cached
 async def get_guild_settings(guild_id) -> dict | None:
     """Return the stored server-wide appearance and message settings."""
     async with connect_db() as db:
@@ -842,127 +885,35 @@ async def upsert_guild_settings(
     message_log_channel_id=None,
 ):
     """Create or update the stored guild settings without losing untouched fields."""
-    current = await get_guild_settings(guild_id) or {}
-    values = {
-        "welcome_channel_id": (
-            welcome_channel_id
-            if welcome_channel_id is not None
-            else current.get("welcome_channel_id")
-        ),
-        "leave_channel_id": (
-            leave_channel_id
-            if leave_channel_id is not None
-            else current.get("leave_channel_id")
-        ),
-        "welcome_message": (
-            welcome_message
-            if welcome_message is not None
-            else current.get("welcome_message")
-        ),
-        "leave_message": (
-            leave_message if leave_message is not None else current.get("leave_message")
-        ),
-        "embed_color": (
-            embed_color if embed_color is not None else current.get("embed_color")
-        ),
-        "embed_image_url": (
-            embed_image_url
-            if embed_image_url is not None
-            else current.get("embed_image_url")
-        ),
-        "mod_log_channel_id": (
-            mod_log_channel_id
-            if mod_log_channel_id is not None
-            else current.get("mod_log_channel_id")
-        ),
-        "message_log_channel_id": (
-            message_log_channel_id
-            if message_log_channel_id is not None
-            else current.get("message_log_channel_id")
-        ),
-    }
-
-    async with connect_db() as db:
-        await db.execute(
-            """
-            INSERT INTO guild_settings (
-                guild_id, welcome_channel_id, leave_channel_id,
-                welcome_message, leave_message, embed_color, embed_image_url,
-                mod_log_channel_id, message_log_channel_id
-            ) VALUES (?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(guild_id) DO UPDATE SET
-            welcome_channel_id=excluded.welcome_channel_id,
-            leave_channel_id=excluded.leave_channel_id,
-            welcome_message=excluded.welcome_message,
-            leave_message=excluded.leave_message,
-            embed_color=excluded.embed_color,
-            embed_image_url=excluded.embed_image_url,
-            mod_log_channel_id=excluded.mod_log_channel_id,
-            message_log_channel_id=excluded.message_log_channel_id
-            """,
-            (
-                guild_id,
-                values["welcome_channel_id"],
-                values["leave_channel_id"],
-                values["welcome_message"],
-                values["leave_message"],
-                values["embed_color"],
-                values["embed_image_url"],
-                values["mod_log_channel_id"],
-                values["message_log_channel_id"],
-            ),
-        )
-        await db.commit()
+    await _upsert_settings(
+        'guild_settings', guild_id,
+        welcome_channel_id=welcome_channel_id,
+        leave_channel_id=leave_channel_id,
+        welcome_message=welcome_message,
+        leave_message=leave_message,
+        embed_color=embed_color,
+        embed_image_url=embed_image_url,
+        mod_log_channel_id=mod_log_channel_id,
+        message_log_channel_id=message_log_channel_id,
+    )
 
 
 async def remove_embed_image(guild_id):
     """Clear the shared image or GIF used on branded embeds."""
-    current = await get_guild_settings(guild_id) or {}
-    await upsert_guild_settings(
-        guild_id,
-        welcome_channel_id=current.get("welcome_channel_id"),
-        leave_channel_id=current.get("leave_channel_id"),
-        welcome_message=current.get("welcome_message"),
-        leave_message=current.get("leave_message"),
-        embed_color=current.get("embed_color"),
-        embed_image_url="",
-        mod_log_channel_id=current.get("mod_log_channel_id"),
-        message_log_channel_id=current.get("message_log_channel_id"),
-    )
+    await upsert_guild_settings(guild_id, embed_image_url="")
 
 
 async def clear_mod_log_channel(guild_id):
     """Disable moderation logging for a guild."""
-    current = await get_guild_settings(guild_id) or {}
-    await upsert_guild_settings(
-        guild_id,
-        welcome_channel_id=current.get("welcome_channel_id"),
-        leave_channel_id=current.get("leave_channel_id"),
-        welcome_message=current.get("welcome_message"),
-        leave_message=current.get("leave_message"),
-        embed_color=current.get("embed_color"),
-        embed_image_url=current.get("embed_image_url"),
-        mod_log_channel_id=0,
-        message_log_channel_id=current.get("message_log_channel_id"),
-    )
+    await upsert_guild_settings(guild_id, mod_log_channel_id=0)
 
 
 async def clear_message_log_channel(guild_id):
     """Disable deleted and edited message logging for a guild."""
-    current = await get_guild_settings(guild_id) or {}
-    await upsert_guild_settings(
-        guild_id,
-        welcome_channel_id=current.get("welcome_channel_id"),
-        leave_channel_id=current.get("leave_channel_id"),
-        welcome_message=current.get("welcome_message"),
-        leave_message=current.get("leave_message"),
-        embed_color=current.get("embed_color"),
-        embed_image_url=current.get("embed_image_url"),
-        mod_log_channel_id=current.get("mod_log_channel_id"),
-        message_log_channel_id=0,
-    )
+    await upsert_guild_settings(guild_id, message_log_channel_id=0)
 
 
+@_settings_cache.cached
 async def get_ticket_settings(guild_id) -> dict | None:
     """Return the saved ticket settings for a guild."""
     async with connect_db() as db:
@@ -979,41 +930,12 @@ async def upsert_ticket_settings(
     guild_id, category_id=None, log_channel_id=None, panel_channel_id=None
 ):
     """Create or update ticket settings without resetting untouched values."""
-    current = await get_ticket_settings(guild_id) or {}
-    values = {
-        "category_id": (
-            category_id if category_id is not None else current.get("category_id")
-        ),
-        "log_channel_id": (
-            log_channel_id
-            if log_channel_id is not None
-            else current.get("log_channel_id")
-        ),
-        "panel_channel_id": (
-            panel_channel_id
-            if panel_channel_id is not None
-            else current.get("panel_channel_id")
-        ),
-    }
-
-    async with connect_db() as db:
-        await db.execute(
-            """
-            INSERT INTO ticket_settings (guild_id, category_id, log_channel_id, panel_channel_id)
-            VALUES (?,?,?,?)
-            ON CONFLICT(guild_id) DO UPDATE SET
-            category_id=excluded.category_id,
-            log_channel_id=excluded.log_channel_id,
-            panel_channel_id=excluded.panel_channel_id
-            """,
-            (
-                guild_id,
-                values["category_id"],
-                values["log_channel_id"],
-                values["panel_channel_id"],
-            ),
-        )
-        await db.commit()
+    await _upsert_settings(
+        'ticket_settings', guild_id,
+        category_id=category_id,
+        log_channel_id=log_channel_id,
+        panel_channel_id=panel_channel_id,
+    )
 
 
 async def add_ticket_role(guild_id, role_id):
@@ -1186,6 +1108,7 @@ async def get_reaction_roles(guild_id) -> list[dict]:
             return [dict(row) for row in rows]
 
 
+@_settings_cache.cached
 async def get_sentinel_settings(guild_id) -> dict:
     """Return Sentinel settings, using sensible defaults before configuration."""
     async with connect_db() as db:
@@ -1217,47 +1140,13 @@ async def upsert_sentinel_settings(
     auto_timeout_seconds=None,
 ):
     """Create or update Sentinel settings without clearing untouched values."""
-    current = await get_sentinel_settings(guild_id)
-    values = {
-        "enabled": enabled if enabled is not None else current.get("enabled", 1),
-        "log_channel_id": (
-            log_channel_id
-            if log_channel_id is not None
-            else current.get("log_channel_id")
-        ),
-        "alert_threshold": (
-            alert_threshold
-            if alert_threshold is not None
-            else current.get("alert_threshold", 70)
-        ),
-        "auto_timeout_seconds": (
-            auto_timeout_seconds
-            if auto_timeout_seconds is not None
-            else current.get("auto_timeout_seconds", 0)
-        ),
-    }
-
-    async with connect_db() as db:
-        await db.execute(
-            """
-            INSERT INTO sentinel_settings (
-                guild_id, enabled, log_channel_id, alert_threshold, auto_timeout_seconds
-            ) VALUES (?,?,?,?,?)
-            ON CONFLICT(guild_id) DO UPDATE SET
-            enabled=excluded.enabled,
-            log_channel_id=excluded.log_channel_id,
-            alert_threshold=excluded.alert_threshold,
-            auto_timeout_seconds=excluded.auto_timeout_seconds
-            """,
-            (
-                guild_id,
-                int(values["enabled"]),
-                values["log_channel_id"],
-                int(values["alert_threshold"]),
-                int(values["auto_timeout_seconds"]),
-            ),
-        )
-        await db.commit()
+    await _upsert_settings(
+        'sentinel_settings', guild_id,
+        enabled=enabled,
+        log_channel_id=log_channel_id,
+        alert_threshold=alert_threshold,
+        auto_timeout_seconds=auto_timeout_seconds,
+    )
 
 
 async def add_sentinel_incident(
@@ -1311,19 +1200,20 @@ async def add_reminder(guild_id, channel_id, user_id, message: str, due_at: str)
         return cursor.lastrowid
 
 
-async def get_due_reminders(now_iso: str, limit: int = 25) -> list[dict]:
-    """Return reminders that are ready to be delivered."""
+async def get_due_reminders(
+    now_iso: str, limit: int = 25, *, after: tuple[str, int] | None = None
+) -> list[dict]:
+    """Page through due reminders even when earlier deliveries are retained."""
+    query = "SELECT * FROM reminders WHERE due_at<=?"
+    params = [now_iso]
+    if after is not None:
+        query += " AND (due_at > ? OR (due_at = ? AND id > ?))"
+        params.extend((after[0], after[0], after[1]))
+    query += " ORDER BY due_at ASC, id ASC LIMIT ?"
+    params.append(limit)
     async with connect_db() as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(
-            """
-            SELECT * FROM reminders
-            WHERE due_at<=?
-            ORDER BY due_at ASC, id ASC
-            LIMIT ?
-            """,
-            (now_iso, limit),
-        ) as cursor:
+        async with db.execute(query, params) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
@@ -1579,6 +1469,7 @@ async def get_sentinel_incident_count(guild_id, days: int = 7) -> int:
             return int(row[0] or 0)
 
 
+@_settings_cache.cached
 async def get_automod_settings(guild_id) -> dict:
     """Return AutoMod settings, using practical defaults before setup."""
     async with connect_db() as db:
@@ -1612,53 +1503,14 @@ async def upsert_automod_settings(
     warn_on_trigger=None,
 ):
     """Create or update AutoMod settings without clearing untouched values."""
-    current = await get_automod_settings(guild_id)
-    values = {
-        "enabled": enabled if enabled is not None else current.get("enabled", 1),
-        "delete_invites": (
-            delete_invites
-            if delete_invites is not None
-            else current.get("delete_invites", 1)
-        ),
-        "delete_links": (
-            delete_links if delete_links is not None else current.get("delete_links", 0)
-        ),
-        "mass_mention_limit": (
-            mass_mention_limit
-            if mass_mention_limit is not None
-            else current.get("mass_mention_limit", 6)
-        ),
-        "warn_on_trigger": (
-            warn_on_trigger
-            if warn_on_trigger is not None
-            else current.get("warn_on_trigger", 0)
-        ),
-    }
-
-    async with connect_db() as db:
-        await db.execute(
-            """
-            INSERT INTO automod_settings (
-                guild_id, enabled, delete_invites, delete_links,
-                mass_mention_limit, warn_on_trigger
-            ) VALUES (?,?,?,?,?,?)
-            ON CONFLICT(guild_id) DO UPDATE SET
-            enabled=excluded.enabled,
-            delete_invites=excluded.delete_invites,
-            delete_links=excluded.delete_links,
-            mass_mention_limit=excluded.mass_mention_limit,
-            warn_on_trigger=excluded.warn_on_trigger
-            """,
-            (
-                guild_id,
-                int(values["enabled"]),
-                int(values["delete_invites"]),
-                int(values["delete_links"]),
-                int(values["mass_mention_limit"]),
-                int(values["warn_on_trigger"]),
-            ),
-        )
-        await db.commit()
+    await _upsert_settings(
+        'automod_settings', guild_id,
+        enabled=enabled,
+        delete_invites=delete_invites,
+        delete_links=delete_links,
+        mass_mention_limit=mass_mention_limit,
+        warn_on_trigger=warn_on_trigger,
+    )
 
 
 async def add_automod_blocked_term(guild_id, term: str, created_by: int) -> bool:

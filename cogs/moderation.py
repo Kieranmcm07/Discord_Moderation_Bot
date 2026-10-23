@@ -10,6 +10,7 @@ import asyncio
 import io
 import logging
 import re
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import discord
@@ -20,14 +21,14 @@ from utils.db import (
     add_case,
     add_temp_ban,
     clear_recent_warns,
-    get_expired_temp_bans,
     get_escalation_rules,
+    get_expired_temp_bans,
     get_matching_escalation_rule,
     get_recent_warns,
     get_temp_bans_for_guild,
     get_warn_count,
-    remove_temp_ban,
     remove_escalation_rule,
+    remove_temp_ban,
     upsert_escalation_rule,
 )
 from utils.moderation import send_mod_log
@@ -407,57 +408,68 @@ class Moderation(commands.Cog, name="Moderation"):
 
     @tasks.loop(minutes=1)
     async def tempban_loop(self):
-        expired_bans = await get_expired_temp_bans(discord.utils.utcnow().isoformat())
+        try:
+            expired_bans = await get_expired_temp_bans(discord.utils.utcnow().isoformat())
+        except sqlite3.OperationalError:
+            log.exception("Could not read temporary bans; will retry next pass")
+            return
         for entry in expired_bans:
-            guild = self.bot.get_guild(entry["guild_id"])
-            remove_entry = False
-            if guild is None:
+            try:
+                await self.expire_tempban(entry)
+            except Exception:
+                log.exception("Could not expire temporary ban for %s; will retry", entry["user_id"])
+
+    async def expire_tempban(self, entry):
+        """Process bans independently so one failure cannot stop the scheduler."""
+        guild = self.bot.get_guild(entry["guild_id"])
+        remove_entry = False
+        if guild is None or guild.unavailable:
+            return
+        else:
+            moderator = self.bot.user
+            if moderator is None:
+                log.warning(
+                    "Bot user is unavailable while expiring tempbans; will retry."
+                )
+                return
+
+            try:
+                user = self.bot.get_user(entry["user_id"]) or await self.bot.fetch_user(entry["user_id"])
+                await guild.unban(user, reason="Temporary ban expired.")
+                case_id = await add_case(
+                    guild.id,
+                    user.id,
+                    moderator.id,
+                    "unban",
+                    "Temporary ban expired.",
+                )
+                embed = self.mod_embed(
+                    "Tempban Expired",
+                    user,
+                    moderator,
+                    "Temporary ban expired.",
+                    case_id,
+                )
+                await send_mod_log(guild, embed)
                 remove_entry = True
-            else:
-                moderator = self.bot.user
-                if moderator is None:
-                    log.warning(
-                        "Bot user is unavailable while expiring tempbans; will retry."
-                    )
-                    continue
+            except discord.NotFound:
+                remove_entry = True
+            except discord.Forbidden:
+                log.warning(
+                    "Missing permission to expire tempban for user %s in guild %s; will retry.",
+                    entry["user_id"],
+                    entry["guild_id"],
+                )
+            except discord.HTTPException:
+                log.warning(
+                    "Could not expire tempban for user %s in guild %s; will retry.",
+                    entry["user_id"],
+                    entry["guild_id"],
+                    exc_info=True,
+                )
 
-                try:
-                    user = await self.bot.fetch_user(entry["user_id"])
-                    await guild.unban(user, reason="Temporary ban expired.")
-                    case_id = await add_case(
-                        guild.id,
-                        user.id,
-                        moderator.id,
-                        "unban",
-                        "Temporary ban expired.",
-                    )
-                    embed = self.mod_embed(
-                        "Tempban Expired",
-                        user,
-                        moderator,
-                        "Temporary ban expired.",
-                        case_id,
-                    )
-                    await send_mod_log(guild, embed)
-                    remove_entry = True
-                except discord.NotFound:
-                    remove_entry = True
-                except discord.Forbidden:
-                    log.warning(
-                        "Missing permission to expire tempban for user %s in guild %s; will retry.",
-                        entry["user_id"],
-                        entry["guild_id"],
-                    )
-                except discord.HTTPException:
-                    log.warning(
-                        "Could not expire tempban for user %s in guild %s; will retry.",
-                        entry["user_id"],
-                        entry["guild_id"],
-                        exc_info=True,
-                    )
-
-            if remove_entry:
-                await remove_temp_ban(entry["guild_id"], entry["user_id"])
+        if remove_entry:
+            await remove_temp_ban(entry["guild_id"], entry["user_id"])
 
     @tempban_loop.before_loop
     async def before_tempban_loop(self):
